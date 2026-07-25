@@ -16,7 +16,7 @@
 // --- CONFIGURATION ---
 const char* JSON_URL_PRIMARY = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist/primarygamelist.json";
 const char* JSON_URL_FALLBACK = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist/fallbackgamelist.json";
-const float APP_VERSION = 3.4f;
+const float APP_VERSION = 3.5f;
 const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
 
@@ -105,7 +105,7 @@ char* FetchJSON(const char* url) {
     HINTERNET hInternet = InternetOpenA("DGE_App/1.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) return NULL;
 
-    // OPTIMIZATION 2: Direct-To-Web Flags! 
+    // OPTIMIZATION 2: Direct-To-Web Flags
     // This strictly forbids Windows from checking or writing to your hard drive's local cache.
     DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_NO_CACHE_WRITE;
     HINTERNET hUrl = InternetOpenUrlA(hInternet, url, NULL, 0, flags, 0);
@@ -445,9 +445,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 
         hBtnLaunch = CreateWindowA("BUTTON", "Emulate", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 80, 180, 120, 30, hwnd, (HMENU)2, NULL, NULL);
         hBtnToggleQueue = CreateWindowA("BUTTON", "", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 255, 10, 25, 25, hwnd, (HMENU)3, NULL, NULL);
-        // Adds a random time tick to the end of the URL (e.g. version.txt?t=123456) to bypass GitHub's CDN cache
-        char busterUrl[512]; sprintf(busterUrl, "%s?t=%lu", VERSION_URL, GetTickCount());
-        char* verData = FetchJSON(busterUrl);
+        char* verData = FetchJSON(VERSION_URL);
         BOOL updateFound = FALSE;
         if (verData) {
             float remoteVer;
