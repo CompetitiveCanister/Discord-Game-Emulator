@@ -16,7 +16,7 @@
 // --- CONFIGURATION ---
 const char* JSON_URL_PRIMARY = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist/primarygamelist.json";
 const char* JSON_URL_FALLBACK = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist/fallbackgamelist.json";
-const float APP_VERSION = 3.3f;
+const float APP_VERSION = 3.4f;
 const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
 
@@ -100,20 +100,39 @@ BOOL FuzzyCompare(const char* s1, const char* s2) {
     return TRUE;
 }
 
-// --- UTILITY: JSON Fetcher (Dynamic Size) ---
+// --- UTILITY: JSON Fetcher
 char* FetchJSON(const char* url) {
     HINTERNET hInternet = InternetOpenA("DGE_App/1.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) return NULL;
-    HINTERNET hUrl = InternetOpenUrlA(hInternet, url, NULL, 0, INTERNET_FLAG_RELOAD, 0);
+
+    // OPTIMIZATION 2: Direct-To-Web Flags! 
+    // This strictly forbids Windows from checking or writing to your hard drive's local cache.
+    DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_NO_CACHE_WRITE;
+    HINTERNET hUrl = InternetOpenUrlA(hInternet, url, NULL, 0, flags, 0);
     if (!hUrl) { InternetCloseHandle(hInternet); return NULL; }
 
-    DWORD bytesRead = 0, totalBytes = 0, bufSize = 65536;
+    // OPTIMIZATION 1: Precise Memory Allocation
+    // Ask GitHub exactly how many bytes the file is before we even start downloading.
+    DWORD contentLength = 0;
+    DWORD lengthSize = sizeof(contentLength);
+    HttpQueryInfoA(hUrl, HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER, &contentLength, &lengthSize, NULL);
+
+    // If GitHub tells us the size, we buy a memory box exactly that size (plus a tiny safety margin).
+    // If GitHub hides the size, we start with a massive 512KB box instead of 64KB so it never has to resize.
+    DWORD bufSize = (contentLength > 0) ? (contentLength + 1024) : 524288; 
+    
     char* buffer = (char*)malloc(bufSize);
     if (!buffer) { InternetCloseHandle(hUrl); InternetCloseHandle(hInternet); return NULL; }
 
+    DWORD bytesRead = 0;
+    DWORD totalBytes = 0;
+
+    // The download loop (Now lightning fast because the buffer never runs out of space!)
     while (InternetReadFile(hUrl, buffer + totalBytes, bufSize - totalBytes - 1, &bytesRead) && bytesRead > 0) {
         totalBytes += bytesRead;
         buffer[totalBytes] = '\0';
+        
+        // Safety net: Only resizes if GitHub lied about the file size
         if (bufSize - totalBytes < 4096) {
             bufSize *= 2;
             char* newBuffer = (char*)realloc(buffer, bufSize);
@@ -121,7 +140,9 @@ char* FetchJSON(const char* url) {
             buffer = newBuffer;
         }
     }
-    InternetCloseHandle(hUrl); InternetCloseHandle(hInternet);
+    
+    InternetCloseHandle(hUrl); 
+    InternetCloseHandle(hInternet);
     return buffer;
 }
 
@@ -424,7 +445,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 
         hBtnLaunch = CreateWindowA("BUTTON", "Emulate", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 80, 180, 120, 30, hwnd, (HMENU)2, NULL, NULL);
         hBtnToggleQueue = CreateWindowA("BUTTON", "", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 255, 10, 25, 25, hwnd, (HMENU)3, NULL, NULL);
-        char* verData = FetchJSON(VERSION_URL); 
+        // Adds a random time tick to the end of the URL (e.g. version.txt?t=123456) to bypass GitHub's CDN cache
+        char busterUrl[512]; sprintf(busterUrl, "%s?t=%lu", VERSION_URL, GetTickCount());
+        char* verData = FetchJSON(busterUrl);
         BOOL updateFound = FALSE;
         if (verData) {
             float remoteVer;
