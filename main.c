@@ -116,9 +116,6 @@ char* FetchJSON(const char* url) {
     DWORD contentLength = 0;
     DWORD lengthSize = sizeof(contentLength);
     HttpQueryInfoA(hUrl, HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER, &contentLength, &lengthSize, NULL);
-
-    // If GitHub tells us the size, we buy a memory box exactly that size (plus a tiny safety margin).
-    // If GitHub hides the size, we start with a massive 512KB box instead of 64KB so it never has to resize.
     DWORD bufSize = (contentLength > 0) ? (contentLength + 1024) : 524288; 
     
     char* buffer = (char*)malloc(bufSize);
@@ -132,7 +129,7 @@ char* FetchJSON(const char* url) {
         totalBytes += bytesRead;
         buffer[totalBytes] = '\0';
         
-        // Safety net: Only resizes if GitHub lied about the file size
+        // Safety net
         if (bufSize - totalBytes < 4096) {
             bufSize *= 2;
             char* newBuffer = (char*)realloc(buffer, bufSize);
@@ -255,7 +252,7 @@ void ProcessQueueBaton() {
             }
         }
         
-        // INTERMEDIATE WIPE: Deletes all DGE_ folders EXCEPT the one we just created for Game 2
+        // INTERMEDIATE WIPE: Deletes all DGE_ folders EXCEPT the one created for the next game
         sprintf(cmd, "/c ping 127.0.0.1 -n 2 > nul & for /d %%x in (\"%sDGE_*\") do if /i not \"%%~fx\"==\"%s\" rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\"", tempDir, nextBaseDir, tempDir);
         ShellExecuteA(NULL, "open", "cmd.exe", cmd, NULL, SW_HIDE);
     } else {
