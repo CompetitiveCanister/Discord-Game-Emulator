@@ -14,13 +14,13 @@
 #pragma comment(lib, "dwmapi.lib")
 
 // --- CONFIGURATION ---
-const char* JSON_URL_PRIMARY = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist/primarygamelist.json";
-const char* JSON_URL_FALLBACK = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist/fallbackgamelist.json";
-const float APP_VERSION = 3.5f;
+const char* JSON_URL = "https://raw.github.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist.json";
+const float APP_VERSION = 3.6f;
 const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
 
 // --- GLOBALS ---
+char* globalJsonData = NULL;
 HBRUSH hBgBrush, hBtnBrush, hEditBrush;
 COLORREF clrText = RGB(240, 240, 240);
 COLORREF clrBg = RGB(30, 30, 30);
@@ -127,7 +127,7 @@ char* FetchJSON(const char* url) {
     DWORD bytesRead = 0;
     DWORD totalBytes = 0;
 
-    // The download loop (Now lightning fast because the buffer never runs out of space!)
+    // The download loop
     while (InternetReadFile(hUrl, buffer + totalBytes, bufSize - totalBytes - 1, &bytesRead) && bytesRead > 0) {
         totalBytes += bytesRead;
         buffer[totalBytes] = '\0';
@@ -327,6 +327,12 @@ LRESULT CALLBACK DummyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
+// --- UTILITY: Background Download Thread ---
+DWORD WINAPI BackgroundDownloadThread(LPVOID lpParam) {
+    globalJsonData = FetchJSON(JSON_URL);
+    return 0;
+}
+
 // --- QUEUE EXECUTION LOGIC (Called by Start Queue or Launch Game) ---
 void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
     if (isSingleShot) {
@@ -358,8 +364,9 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
         if (queueCount == 0) { MessageBoxA(hwnd, "Queue is empty!", "Error", MB_ICONERROR | MB_OK); return; }
     }
 
-    char* jPri = FetchJSON(JSON_URL_PRIMARY);
-    char* jFall = FetchJSON(JSON_URL_FALLBACK);
+    // If the user clicks Launch insanely fast before the background thread finishes, wait for it (up to 5 seconds max)
+    int waitLoops = 0;
+    while (!globalJsonData && waitLoops < 50) { Sleep(100); waitLoops++; }
 
     char currentExe[MAX_PATH]; GetModuleFileNameA(NULL, currentExe, MAX_PATH);
     char fileBuf[8192] = { 0 };
@@ -369,8 +376,10 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
         char primaryName[256] = { 0 }, exePath[256] = { 0 };
         BOOL found = FALSE;
 
-        if (jPri) found = ParseGame(jPri, queue[i].gameName, primaryName, exePath);
-        if (!found && jFall) found = ParseGame(jFall, queue[i].gameName, primaryName, exePath);
+        // Search from RAM
+        if (globalJsonData) {
+            found = ParseGame(globalJsonData, queue[i].gameName, primaryName, exePath);
+        }
 
         if (strlen(queue[i].customExe) > 0) strcpy(exePath, queue[i].customExe);
         if (strlen(primaryName) == 0) strcpy(primaryName, strlen(queue[i].gameName) > 0 ? queue[i].gameName : "CustomGame");
@@ -378,7 +387,6 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
         if (strlen(exePath) == 0) {
             char err[512]; sprintf(err, "Could not find path for game: '%s'. Check for spelling errors, or enter a custom EXE path.", queue[i].gameName);
             MessageBoxA(hwnd, err, "Error", MB_ICONERROR | MB_OK);
-            if(jPri) free(jPri); if(jFall) free(jFall);
             if(isSingleShot) queueCount = 0; // reset
             return;
         }
@@ -394,7 +402,6 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
         *w = '\0';
         sprintf(fileBuf + strlen(fileBuf), "%d|%s|%s|%d\n", i + 1, primaryName, exePath, queue[i].timeSec);
     }
-    if(jPri) free(jPri); if(jFall) free(jFall);
 
     // Save QueueSession.txt
     char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
@@ -645,11 +652,13 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
 
     if (!isDummy) {
         // --- UNIVERSAL STARTUP CLEANUP ---
-        // Silently deletes ALL orphaned DGE_ folders and files the moment the launcher opens
         char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
         char cleanCmd[MAX_PATH * 3];
         sprintf(cleanCmd, "/c for /d %%x in (\"%sDGE_*\") do rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\"", tempDir, tempDir);
         ShellExecuteA(NULL, "open", "cmd.exe", cleanCmd, NULL, SW_HIDE);
+
+        // --- NEW: START BACKGROUND DOWNLOAD ---
+        CreateThread(NULL, 0, BackgroundDownloadThread, NULL, 0, NULL);
     }
 
     WNDCLASSA wc = { 0 };
