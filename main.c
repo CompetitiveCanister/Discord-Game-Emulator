@@ -15,7 +15,7 @@
 
 // --- CONFIGURATION ---
 const char* JSON_URL = "https://raw.github.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist.json";
-const float APP_VERSION = 3.6f;
+const float APP_VERSION = 3.7f;
 const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
 
@@ -40,7 +40,8 @@ BOOL isQueueMode = FALSE;
 
 // Main App Controls
 HWND hGameName, hCustomExe, hTime;
-HWND hBtnLaunch, hBtnToggleQueue, hBtnUpdate;
+HWND hBtnLaunch, hBtnToggleQueue, hBtnUpdate, hBtnSearch;
+HWND hSearchWnd = NULL, hSearchEdit, hSearchList;
 HWND hBtnAddQueue, hBtnStartQueue, hBtnRemoveQueue, hListBox, hQueueLabel;
 
 // Dummy State
@@ -89,11 +90,14 @@ int EvalExpr(const char** p) {
 // --- UTILITY: Fuzzy String Matcher ---
 BOOL FuzzyCompare(const char* s1, const char* s2) {
     while (*s1 || *s2) {
-        while (*s1 && !((*s1 >= 'A' && *s1 <= 'Z') || (*s1 >= 'a' && *s1 <= 'z') || (*s1 >= '0' && *s1 <= '9'))) s1++;
-        while (*s2 && !((*s2 >= 'A' && *s2 <= 'Z') || (*s2 >= 'a' && *s2 <= 'z') || (*s2 >= '0' && *s2 <= '9'))) s2++;
+        // Preserves letters, numbers, AND multi-byte UTF-8 special characters (>= 0x80)
+        while (*s1 && !((*s1 >= 'A' && *s1 <= 'Z') || (*s1 >= 'a' && *s1 <= 'z') || (*s1 >= '0' && *s1 <= '9') || (unsigned char)*s1 >= 0x80)) s1++;
+        while (*s2 && !((*s2 >= 'A' && *s2 <= 'Z') || (*s2 >= 'a' && *s2 <= 'z') || (*s2 >= '0' && *s2 <= '9') || (unsigned char)*s2 >= 0x80)) s2++;
+        
         char c1 = (*s1 >= 'A' && *s1 <= 'Z') ? *s1 + 32 : *s1;
         char c2 = (*s2 >= 'A' && *s2 <= 'Z') ? *s2 + 32 : *s2;
         if (c1 != c2) return FALSE;
+        
         if (*s1) s1++;
         if (*s2) s2++;
     }
@@ -116,6 +120,9 @@ char* FetchJSON(const char* url) {
     DWORD contentLength = 0;
     DWORD lengthSize = sizeof(contentLength);
     HttpQueryInfoA(hUrl, HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER, &contentLength, &lengthSize, NULL);
+
+    // If GitHub tells us the size, we buy a memory box exactly that size (plus a tiny safety margin).
+    // If GitHub hides the size, we start with a massive 512KB box instead of 64KB so it never has to resize.
     DWORD bufSize = (contentLength > 0) ? (contentLength + 1024) : 524288; 
     
     char* buffer = (char*)malloc(bufSize);
@@ -129,7 +136,7 @@ char* FetchJSON(const char* url) {
         totalBytes += bytesRead;
         buffer[totalBytes] = '\0';
         
-        // Safety net
+        // Safety net: Only resizes if GitHub lied about the file size
         if (bufSize - totalBytes < 4096) {
             bufSize *= 2;
             char* newBuffer = (char*)realloc(buffer, bufSize);
@@ -252,7 +259,7 @@ void ProcessQueueBaton() {
             }
         }
         
-        // INTERMEDIATE WIPE: Deletes all DGE_ folders EXCEPT the one created for the next game
+        // INTERMEDIATE WIPE: Deletes all DGE_ folders EXCEPT the one we just created for Game 2
         sprintf(cmd, "/c ping 127.0.0.1 -n 2 > nul & for /d %%x in (\"%sDGE_*\") do if /i not \"%%~fx\"==\"%s\" rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\"", tempDir, nextBaseDir, tempDir);
         ShellExecuteA(NULL, "open", "cmd.exe", cmd, NULL, SW_HIDE);
     } else {
@@ -434,6 +441,144 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
     }
 }
 
+// --- UTILITY: Forgiving Search Substring ---
+BOOL FuzzySubstring(const char* target, const char* query) {
+    if (!query || !*query) return TRUE; 
+    
+    char nT[512] = {0}, nQ[512] = {0};
+    int i = 0, j = 0;
+    
+    for (const char* p = target; *p && i < 511; p++) {
+        unsigned char c = (unsigned char)*p;
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c >= 0x80)
+            nT[i++] = (c >= 'A' && c <= 'Z') ? c + 32 : c;
+    }
+    for (const char* p = query; *p && j < 511; p++) {
+        unsigned char c = (unsigned char)*p;
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c >= 0x80)
+            nQ[j++] = (c >= 'A' && c <= 'Z') ? c + 32 : c;
+    }
+    
+    if (j == 0) return TRUE;
+    return strstr(nT, nQ) != NULL; 
+}
+
+// --- UTILITY: Execute the Search Engine ---
+void PerformSearch(HWND hList, const char* query) {
+    SendMessageA(hList, WM_SETREDRAW, FALSE, 0); // Freeze graphics to prevent lag!
+    SendMessageA(hList, LB_RESETCONTENT, 0, 0);  // Clear list
+
+    if (!globalJsonData) {
+        SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)"Loading database...");
+        SendMessageA(hList, WM_SETREDRAW, TRUE, 0);
+        return;
+    }
+
+    const char* p = globalJsonData;
+    while (p && (p = strstr(p, "\"names\"")) != NULL) {
+        p = strchr(p, '[');
+        if (!p) break;
+        const char* endArr = strchr(p, ']');
+        if (!endArr) break;
+
+        char primary[256] = { 0 };
+        BOOL hasPrimary = FALSE, matchFound = FALSE;
+        const char* strStart = p;
+
+        while ((strStart = strchr(strStart, '"')) != NULL && strStart < endArr) {
+            strStart++;
+            const char* strEnd = strchr(strStart, '"');
+            if (!strEnd || strEnd > endArr) break;
+
+            size_t len = strEnd - strStart;
+            if (len > 255) len = 255;
+            char alias[256] = { 0 };
+            strncpy(alias, strStart, len);
+
+            if (!hasPrimary) { strcpy(primary, alias); hasPrimary = TRUE; }
+            if (FuzzySubstring(alias, query)) matchFound = TRUE; // <--- The Forgiving Matcher
+            strStart = strEnd + 1;
+        }
+
+        if (matchFound && hasPrimary) {
+            SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)primary);
+        }
+        p = endArr;
+    }
+    SendMessageA(hList, WM_SETREDRAW, TRUE, 0); // Unfreeze and draw once instantly!
+}
+
+// --- SEARCH APP WINDOW PROC ---
+LRESULT CALLBACK SearchWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+    case WM_CREATE: {
+        CreateWindowA("STATIC", "Search Game Database:", WS_CHILD | WS_VISIBLE, 12, 10, 200, 20, hwnd, NULL, NULL, NULL);
+        hSearchEdit = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 12, 30, 270, 22, hwnd, (HMENU)101, NULL, NULL);
+        hSearchList = CreateWindowA("LISTBOX", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY, 12, 60, 270, 280, hwnd, (HMENU)102, NULL, NULL);
+        EnumChildWindows(hwnd, SetFontProc, (LPARAM)hFont);
+        
+        // If data isn't here yet, start a fast timer to check for it
+        if (!globalJsonData) SetTimer(hwnd, 1, 200, NULL); 
+        PerformSearch(hSearchList, "");
+        break;
+    }
+    case WM_TIMER: {
+        // The moment the background download finishes, refresh the list
+        if (wParam == 1 && globalJsonData) {
+            KillTimer(hwnd, 1);
+            char query[256];
+            GetWindowTextA(hSearchEdit, query, 256);
+            PerformSearch(hSearchList, query);
+        }
+        break;
+    }
+    case WM_COMMAND: {
+        int id = LOWORD(wParam);
+        int code = HIWORD(wParam);
+        
+        // Did the user type something in the Search Box?
+        if (id == 101 && code == EN_CHANGE) {
+            char query[256];
+            GetWindowTextA(hSearchEdit, query, 256);
+            PerformSearch(hSearchList, query); // Filter the list
+        }
+        // Did the user DOUBLE-CLICK a game in the list?
+        else if (id == 102 && code == LBN_DBLCLK) {
+            int sel = SendMessageA(hSearchList, LB_GETCURSEL, 0, 0);
+            if (sel != LB_ERR) {
+                char selectedGame[256] = { 0 };
+                SendMessageA(hSearchList, LB_GETTEXT, sel, (LPARAM)selectedGame);
+                
+                // AUTO-FILL the main launcher's Game Name box!
+                SetWindowTextA(hGameName, selectedGame);
+                
+                // --- NEW: Instantly look up and AUTO-FILL the EXE Path! ---
+                char dummyName[256] = { 0 }, exePath[256] = { 0 };
+                if (globalJsonData && ParseGame(globalJsonData, selectedGame, dummyName, exePath)) {
+                    SetWindowTextA(hCustomExe, exePath);
+                }
+                
+                // Close the search window
+                DestroyWindow(hwnd);
+                hSearchWnd = NULL;
+            }
+        }
+        break;
+    }
+    case WM_CTLCOLORSTATIC:
+        SetTextColor((HDC)wParam, clrText); SetBkColor((HDC)wParam, clrBg); return (LRESULT)hBgBrush;
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+        SetTextColor((HDC)wParam, clrText); SetBkColor((HDC)wParam, clrEditBg); return (LRESULT)hEditBrush;
+    case WM_CLOSE:
+        DestroyWindow(hwnd);
+        hSearchWnd = NULL; 
+        break;
+    default: return DefWindowProc(hwnd, msg, wParam, lParam);
+    }
+    return 0;
+}
+
 // --- MAIN APP WINDOW PROC ---
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -458,7 +603,8 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             }
             free(verData);
         }
-        hBtnUpdate = CreateWindowA("BUTTON", "", WS_CHILD | (updateFound ? WS_VISIBLE : 0) | BS_OWNERDRAW, 225, 10, 25, 25, hwnd, (HMENU)7, NULL, NULL);
+        hBtnUpdate = CreateWindowA("BUTTON", "", WS_CHILD | (updateFound ? WS_VISIBLE : 0) | BS_OWNERDRAW, 195, 10, 25, 25, hwnd, (HMENU)7, NULL, NULL);
+        hBtnSearch = CreateWindowA("BUTTON", "", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 225, 10, 25, 25, hwnd, (HMENU)8, NULL, NULL);
         hQueueLabel = CreateWindowA("STATIC", "Session Queue:", WS_CHILD, 310, 20, 200, 20, hwnd, NULL, NULL, NULL);
         hListBox = CreateWindowA("LISTBOX", NULL, WS_CHILD | WS_BORDER | WS_VSCROLL | LBS_NOTIFY, 310, 40, 250, 122, hwnd, NULL, NULL, NULL);
         hBtnAddQueue = CreateWindowA("BUTTON", "Add to Queue", WS_CHILD | BS_OWNERDRAW, 80, 180, 120, 30, hwnd, (HMENU)4, NULL, NULL);
@@ -551,6 +697,32 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 PostQuitMessage(0); 
             }
         }
+        else if (id == 8) { // Search Button Clicked
+            if (!hSearchWnd) { // Only open it if it isn't already open
+                WNDCLASSA swc = { 0 };
+                swc.lpfnWndProc = SearchWndProc;
+                swc.hInstance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
+                swc.hbrBackground = hBgBrush;
+                swc.lpszClassName = "DgeSearchClass";
+                swc.hIcon = (HICON)SendMessageA(hwnd, WM_GETICON, ICON_SMALL, 0); // Copy main app icon
+                RegisterClassA(&swc); 
+
+                // Spawn the new window
+                hSearchWnd = CreateWindowA("DgeSearchClass", "Game Library",
+                    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+                    CW_USEDEFAULT, CW_USEDEFAULT, 300, 369, hwnd, NULL, swc.hInstance, NULL);
+
+                int useImmersiveDarkMode = 1;
+                DwmSetWindowAttribute(hSearchWnd, 20, &useImmersiveDarkMode, sizeof(useImmersiveDarkMode));
+
+                ShowWindow(hSearchWnd, SW_SHOW);
+                UpdateWindow(hSearchWnd);
+                SetFocus(hSearchEdit);
+            } else {
+                SetForegroundWindow(hSearchWnd); // If it's already open, just bring it to the front
+                SetFocus(hSearchEdit);
+            }
+        }
         break;
     }
     case WM_CTLCOLORSTATIC:
@@ -583,7 +755,21 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             RECT line3 = { 6, 17, 19, 19 };
             FillRect(p->hDC, &line1, hIconBrush); FillRect(p->hDC, &line2, hIconBrush); FillRect(p->hDC, &line3, hIconBrush);
             DeleteObject(hIconBrush);
-        } else {
+        }
+        else if (p->CtlID == 8) {
+            // Draw sleek Magnifying Glass for Search Button
+            HPEN hPen = CreatePen(PS_SOLID, 2, clrText);
+            HPEN hOldPen = SelectObject(p->hDC, hPen);
+            HBRUSH hOldBrush = SelectObject(p->hDC, GetStockObject(NULL_BRUSH)); // Hollow brush for the glass
+
+            Ellipse(p->hDC, 5, 5, 17, 17); // The Glass Circle
+            MoveToEx(p->hDC, 15, 15, NULL); LineTo(p->hDC, 19, 19); // The Handle
+
+            SelectObject(p->hDC, hOldBrush);
+            SelectObject(p->hDC, hOldPen);
+            DeleteObject(hPen);
+        }
+        else {
             // Draw Standard Text for all other buttons
             SetBkMode(p->hDC, TRANSPARENT); 
             SetTextColor(p->hDC, clrText);
@@ -677,9 +863,26 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
 
     MSG msg; 
     while (GetMessage(&msg, NULL, 0, 0)) { 
-        // Intercept 'Enter' key in the Main Window
+        // Intercept 'Enter' key safely and figure out which window we are in!
         if (!isDummy && msg.message == WM_KEYDOWN && msg.wParam == VK_RETURN) {
-            SendMessageA(hwnd, WM_COMMAND, isQueueMode ? 4 : 2, 0);
+            HWND activeRoot = GetAncestor(msg.hwnd, GA_ROOT);
+            
+            if (activeRoot == hwnd) {
+                // If in Main Window -> Launch or Add to Queue
+                SendMessageA(hwnd, WM_COMMAND, isQueueMode ? 4 : 2, 0);
+                continue;
+            } 
+            else if (hSearchWnd && activeRoot == hSearchWnd) {
+                // If in Search Window -> Auto-fill the top search result!
+                int sel = SendMessageA(hSearchList, LB_GETCURSEL, 0, 0);
+                if (sel == LB_ERR) sel = 0; // Default to the top result if none is clicked
+                
+                if (SendMessageA(hSearchList, LB_GETCOUNT, 0, 0) > 0) {
+                    SendMessageA(hSearchList, LB_SETCURSEL, sel, 0);
+                    SendMessageA(hSearchWnd, WM_COMMAND, MAKEWPARAM(102, LBN_DBLCLK), 0);
+                }
+                continue;
+            }
         }
         TranslateMessage(&msg); 
         DispatchMessage(&msg); 
