@@ -39872,8 +39872,7 @@
   },
   {
     "names": [
-      "Resident Evil 2 \"R.P.D. Demo\"",
-      "RESIDENT EVIL 2 \"R.P.D. Demo\""
+      "Resident Evil 2 R.P.D. Demo"
     ],
     "exe": "resident evil 2  biohazard re2 r.p.d. demo\\re2.exe"
   },
@@ -40776,8 +40775,8 @@
   },
   {
     "names": [
-      "ライザのアトリエ２ ～失われた伝承と秘密の妖精～",
-      "Atelier Ryza 2: Lost Legends & the Secret Fairy"
+      "Atelier Ryza 2: Lost Legends & the Secret Fairy",
+      "ライザのアトリエ２ ～失われた伝承と秘密の妖精～"
     ],
     "exe": "atelier ryza 2\\atelier_ryza_2.exe"
   },
@@ -58121,6 +58120,7 @@
   },
   {
     "names": [
+      "BOKURA: planet",
       "違う星のぼくら"
     ],
     "exe": "bokura_planet_win\\bokura_planet.exe"
