@@ -15,7 +15,7 @@
 
 // --- CONFIGURATION ---
 const char* JSON_URL = "https://raw.github.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist.json";
-const float APP_VERSION = 3.8f;
+const float APP_VERSION = 4.0f;
 const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
 
