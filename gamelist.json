@@ -870,18 +870,13 @@
   },
   {
     "names": [
-      "Tom Clancy's Ghost Recon: Wildlands",
-      "Tom Clancys Ghost Recon® Wildlands",
-      "Tom Clancy's Ghost Recon? Wildlands",
-      "Tom Clancy's Ghost Recon® Wildlands",
-      "Tom Clancys Ghost Recon: Wildlands"
+      "Tom Clancy's Ghost Recon: Wildlands"
     ],
     "exe": "grw.exe"
   },
   {
     "names": [
-      "Warhammer: End Times - Vermintide",
-      "Warhammer End Times Vermintide"
+      "Warhammer: End Times - Vermintide"
     ],
     "exe": "vermintide.exe"
   },
@@ -938,7 +933,6 @@
   },
   {
     "names": [
-      "Naruto Shippuden: Ultimate Ninja Storm 4",
       "NARUTO SHIPPUDEN: Ultimate Ninja STORM 4"
     ],
     "exe": "naruto shippuden ultimate ninja storm 4\\x360ce.exe"
