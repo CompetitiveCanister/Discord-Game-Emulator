@@ -15,7 +15,7 @@
 
 // --- CONFIGURATION ---
 const char* JSON_URL = "https://raw.github.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist.json";
-const float APP_VERSION = 3.7f;
+const float APP_VERSION = 3.8f;
 const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
 
@@ -232,14 +232,16 @@ void ProcessQueueBaton() {
             f = fopen(queueFilePath, "w");
             if (f) { fwrite(fileData, 1, strlen(fileData), f); fclose(f); }
 
+            // Parse next game details
             char nextTarget[32]; sprintf(nextTarget, "\n%d|", qCurrent + 1);
             char* line = strstr(fileData, nextTarget);
             if (line) {
-                line++; 
-                char tIdx[16], pName[256], ePath[256], tSec[32];
-                sscanf(line, "%[^|]|%[^|]|%[^|]|%s", tIdx, pName, ePath, tSec);
+                line++; // skip newline
+                char tIdx[16], dName[256], fName[256], ePath[256], tSec[32];
+                sscanf(line, "%[^|]|%[^|]|%[^|]|%[^|]|%s", tIdx, dName, fName, ePath, tSec);
 
-                sprintf(nextBaseDir, "%sDGE_%s", tempDir, pName);
+                char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
+                char nextBaseDir[MAX_PATH]; sprintf(nextBaseDir, "%sDGE_%s", tempDir, fName);
                 char nextExePath[MAX_PATH]; sprintf(nextExePath, "%s\\%s", nextBaseDir, ePath);
 
                 char dirToCreate[MAX_PATH]; strcpy(dirToCreate, nextExePath);
@@ -291,6 +293,8 @@ LRESULT CALLBACK DummyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         
         SetTimer(hwnd, 1, 1000, NULL);
         EnumChildWindows(hwnd, SetFontProc, (LPARAM)hFont);
+        // --- RAM Trim ---
+        SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
         break;
     }
     case WM_TIMER: {
@@ -327,6 +331,12 @@ LRESULT CALLBACK DummyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         PostQuitMessage(0);
         break;
     default: return DefWindowProc(hwnd, msg, wParam, lParam);
+    case WM_ACTIVATE:
+        // If the user clicks off the Dummy window (unfocuses it), flush the RAM again
+        if (LOWORD(wParam) == WA_INACTIVE) {
+            SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
+        }
+        break;
     }
     return 0;
 }
@@ -395,8 +405,9 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
             return;
         }
 
-        // Sanitize folder name
-        char* r = primaryName; char* w = primaryName;
+        // Sanitize folder name, but keep original for display
+        char folderName[256];
+        char* r = primaryName; char* w = folderName;
         while (*r) {
             if (*r != ':' && *r != ';' && *r != '<' && *r != '>' && *r != '"' && *r != '/' && *r != '\\' && *r != '|' && *r != '?' && *r != '*') {
                 *w++ = *r;
@@ -404,7 +415,9 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
             r++;
         }
         *w = '\0';
-        sprintf(fileBuf + strlen(fileBuf), "%d|%s|%s|%d\n", i + 1, primaryName, exePath, queue[i].timeSec);
+        
+        // Notice the extra %s -> Index | DisplayName | FolderName | ExePath | Time
+        sprintf(fileBuf + strlen(fileBuf), "%d|%s|%s|%s|%d\n", i + 1, primaryName, folderName, exePath, queue[i].timeSec);
     }
 
     // Save QueueSession.txt
@@ -414,12 +427,12 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
     if (f) { fwrite(fileBuf, 1, strlen(fileBuf), f); fclose(f); }
 
     // Read details for Game 1 to launch the chain
-    char pName[256], ePath[256];
+    char dName[256], fName[256], ePath[256];
     char searchStr[16]; sprintf(searchStr, "\n1|");
     char* line1 = strstr(fileBuf, searchStr);
-    sscanf(line1 + 3, "%[^|]|%[^|]", pName, ePath);
+    sscanf(line1 + 3, "%[^|]|%[^|]|%[^|]", dName, fName, ePath);
 
-    char baseDgeFolder[MAX_PATH]; sprintf(baseDgeFolder, "%sDGE_%s", tempDir, pName);
+    char baseDgeFolder[MAX_PATH]; sprintf(baseDgeFolder, "%sDGE_%s", tempDir, fName);
     char fullExePath[MAX_PATH]; sprintf(fullExePath, "%s\\%s", baseDgeFolder, ePath);
 
     char dirToCreate[MAX_PATH]; strcpy(dirToCreate, fullExePath);
@@ -855,7 +868,6 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCmd) {
     hBgBrush = CreateSolidBrush(clrBg);
     hBtnBrush = CreateSolidBrush(RGB(70, 70, 70));
-    hEditBrush = CreateSolidBrush(clrEditBg);
     hFont = CreateFontA(-14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, "Segoe UI");
 
     int argc; LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -877,10 +889,10 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
                 char targetLine[32]; sprintf(targetLine, "\n%d|", qCurrent);
                 char* line = strstr(fileData, targetLine);
                 if (line) {
-                    char tIdx[16], pName[256], ePath[256], tSec[32];
-                    sscanf(line + 1, "%[^|]|%[^|]|%[^|]|%s", tIdx, pName, ePath, tSec);
+                    char tIdx[16], dName[256], fName[256], ePath[256], tSec[32];
+                    sscanf(line + 1, "%[^|]|%[^|]|%[^|]|%[^|]|%s", tIdx, dName, fName, ePath, tSec);
                     
-                    if (strcmp(pName, "CustomGame") == 0) {
+                    if (strcmp(dName, "CustomGame") == 0) {
                         char *r = ePath, *w = currentGameName;
                         while (*r) {
                             if (*r == '\\' && *(r + 1) == '\\') { *w++ = '\\'; r += 2; }
@@ -888,13 +900,13 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
                         }
                         *w = '\0';
                     } else {
-                        strcpy(currentGameName, pName);
+                        strcpy(currentGameName, dName); // Pass the beautiful original name to the UI
                     }
 
                     totalTime = atoi(tSec); timeLeft = totalTime;
                     
                     char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
-                    sprintf(dgeFolderPath, "%sDGE_%s", tempDir, pName);
+                    sprintf(dgeFolderPath, "%sDGE_%s", tempDir, fName); // Use the stripped name for the folder
                 }
             }
         }
@@ -902,6 +914,7 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
     LocalFree(argv);
 
     if (!isDummy) {
+        hEditBrush = CreateSolidBrush(clrEditBg);
         // --- UNIVERSAL STARTUP CLEANUP ---
         char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
         char cleanCmd[MAX_PATH * 3];
@@ -956,6 +969,6 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
         DispatchMessage(&msg); 
     }
 
-    DeleteObject(hBgBrush); DeleteObject(hBtnBrush); DeleteObject(hEditBrush); DeleteObject(hFont);
+    DeleteObject(hBgBrush); DeleteObject(hBtnBrush); if (!isDummy) DeleteObject(hEditBrush); DeleteObject(hFont);
     return 0;
 }
