@@ -441,13 +441,27 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
     }
 }
 
-// --- UTILITY: Forgiving Search Substring ---
-BOOL FuzzySubstring(const char* target, const char* query) {
-    if (!query || !*query) return TRUE; 
+// --- UTILITY: Search Result Struct & Sorter ---
+typedef struct {
+    char name[256];
+    int score;
+} SearchResult;
+
+int CompareResults(const void* a, const void* b) {
+    SearchResult* r1 = (SearchResult*)a;
+    SearchResult* r2 = (SearchResult*)b;
+    if (r1->score != r2->score) return r2->score - r1->score; // Highest score at the top
+    return lstrcmpiA(r1->name, r2->name); // If tied, sort alphabetically
+}
+
+// --- UTILITY: Tiered Search Scorer ---
+int FuzzyScore(const char* target, const char* query) {
+    if (!query || !*query) return 1; // Empty search box shows everything
     
     char nT[512] = {0}, nQ[512] = {0};
     int i = 0, j = 0;
     
+    // Normalize target & query (lowercase, alphanumeric/special characters only)
     for (const char* p = target; *p && i < 511; p++) {
         unsigned char c = (unsigned char)*p;
         if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c >= 0x80)
@@ -459,19 +473,49 @@ BOOL FuzzySubstring(const char* target, const char* query) {
             nQ[j++] = (c >= 'A' && c <= 'Z') ? c + 32 : c;
     }
     
-    if (j == 0) return TRUE;
-    return strstr(nT, nQ) != NULL; 
+    if (j == 0) return 1;
+
+    // Rank 4: Exact Match
+    if (strcmp(nT, nQ) == 0) return 4; 
+
+    // Rank 3: Starts With (Prefix Match)
+    BOOL isPrefix = TRUE;
+    for (int k = 0; k < j; k++) {
+        if (nT[k] != nQ[k]) { isPrefix = FALSE; break; }
+    }
+    if (isPrefix) return 3;
+
+    // Rank 2: Substring Match
+    if (strstr(nT, nQ) != NULL) return 2;
+
+    return 0; // Rank 0: No Match
 }
 
 // --- UTILITY: Execute the Search Engine ---
 void PerformSearch(HWND hList, const char* query) {
-    SendMessageA(hList, WM_SETREDRAW, FALSE, 0); // Freeze graphics to prevent lag!
-    SendMessageA(hList, LB_RESETCONTENT, 0, 0);  // Clear list
+    SendMessageA(hList, WM_SETREDRAW, FALSE, 0); 
+    SendMessageA(hList, LB_RESETCONTENT, 0, 0);  
 
     if (!globalJsonData) {
         SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)"Loading database...");
         SendMessageA(hList, WM_SETREDRAW, TRUE, 0);
         return;
+    }
+
+    int maxRes = 1000;
+    SearchResult* results = (SearchResult*)malloc(sizeof(SearchResult) * maxRes);
+    int resCount = 0;
+
+    // Check if the user typed an actual search term (letters/numbers/special chars)
+    BOOL hasQuery = FALSE;
+    if (query) {
+        for (const char* p = query; *p; p++) {
+            unsigned char c = (unsigned char)*p;
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c >= 0x80) {
+                hasQuery = TRUE;
+                break;
+            }
+        }
     }
 
     const char* p = globalJsonData;
@@ -482,7 +526,8 @@ void PerformSearch(HWND hList, const char* query) {
         if (!endArr) break;
 
         char primary[256] = { 0 };
-        BOOL hasPrimary = FALSE, matchFound = FALSE;
+        BOOL hasPrimary = FALSE;
+        int bestScore = 0;
         const char* strStart = p;
 
         while ((strStart = strchr(strStart, '"')) != NULL && strStart < endArr) {
@@ -496,16 +541,39 @@ void PerformSearch(HWND hList, const char* query) {
             strncpy(alias, strStart, len);
 
             if (!hasPrimary) { strcpy(primary, alias); hasPrimary = TRUE; }
-            if (FuzzySubstring(alias, query)) matchFound = TRUE; // <--- The Forgiving Matcher
+            
+            int score = FuzzyScore(alias, query);
+            if (score > bestScore) bestScore = score;
+            
             strStart = strEnd + 1;
         }
 
-        if (matchFound && hasPrimary) {
-            SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)primary);
+        if (bestScore > 0 && hasPrimary) {
+            if (resCount >= maxRes) {
+                maxRes *= 2;
+                results = (SearchResult*)realloc(results, sizeof(SearchResult) * maxRes);
+            }
+            strcpy(results[resCount].name, primary);
+            results[resCount].score = bestScore;
+            resCount++;
         }
         p = endArr;
     }
-    SendMessageA(hList, WM_SETREDRAW, TRUE, 0); // Unfreeze and draw once instantly!
+
+    if (resCount > 0) {
+        // ONLY sort if the user actually typed in the search box
+        // If the box is empty, it preserves JSON order
+        if (hasQuery) {
+            qsort(results, resCount, sizeof(SearchResult), CompareResults);
+        }
+        
+        for (int i = 0; i < resCount; i++) {
+            SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)results[i].name);
+        }
+    }
+
+    free(results);
+    SendMessageA(hList, WM_SETREDRAW, TRUE, 0); 
 }
 
 // --- SEARCH APP WINDOW PROC ---
