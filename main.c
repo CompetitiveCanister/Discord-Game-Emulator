@@ -13,9 +13,9 @@
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "dwmapi.lib")
 
-const char* JSON_URL = "https://raw.github.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist.json";
+const char* JSON_URL = "https://raw.github.com/CompetitiveCanister/Discord-Game-Emulator/refs/heads/main/gamelist.json";
 const float APP_VERSION = 4.1f;
-const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
+const char* VERSION_URL = "https://raw.githubusercontent.com/CompetitiveCanister/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
 
 char* globalJsonData = NULL;
