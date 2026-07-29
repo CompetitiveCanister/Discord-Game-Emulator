@@ -32,9 +32,9 @@ gcc -mwindows -o Discord_Game_Emulator.exe main.c resource.res -lwininet -lshell
 5. **Execute:** Click the **Emulate** button at the bottom of the window to begin emulation.
 
 ## Modes
-1. Single Game Emulation: Emulate one game only
-2. Queued Emulation: Emulate games in a queue, one game after the other.
-3. Simultaneous Emulation: Emulate multiple games at once.
+1. **Single Game Emulation:** Emulate one game only
+2. **Queued Emulation:** Emulate games in a queue, one game after the other.
+3. **Simultaneous Emulation:** Emulate multiple games at once.
 
 ## AI Declaration
 This project was written with the assistance of AI.
