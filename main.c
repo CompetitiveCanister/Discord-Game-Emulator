@@ -13,13 +13,13 @@
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "dwmapi.lib")
 
-// --- CONFIGURATION ---
+
 const char* JSON_URL = "https://raw.github.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist.json";
-const float APP_VERSION = 4.0f;
+const float APP_VERSION = 4.1f;
 const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
 
-// --- GLOBALS ---
+
 char* globalJsonData = NULL;
 HBRUSH hBgBrush, hBtnBrush, hEditBrush;
 COLORREF clrText = RGB(240, 240, 240);
@@ -27,7 +27,7 @@ COLORREF clrBg = RGB(30, 30, 30);
 COLORREF clrEditBg = RGB(45, 45, 45);
 HFONT hFont;
 
-// Queue Data
+
 typedef struct {
     char gameName[256];
     char customExe[256];
@@ -36,23 +36,38 @@ typedef struct {
 
 QueueItem queue[100];
 int queueCount = 0;
-BOOL isQueueMode = FALSE;
 
-// Main App Controls
+
+int appMode = 0;
 HWND hGameName, hCustomExe, hTime;
 HWND hBtnLaunch, hBtnToggleQueue, hBtnUpdate, hBtnSearch;
 HWND hSearchWnd = NULL, hSearchEdit, hSearchList;
 HWND hBtnAddQueue, hBtnStartQueue, hBtnRemoveQueue, hListBox, hQueueLabel;
+HWND hBtnTerminateSimul, hBtnTerminateAllSimul;
+BOOL isSimulManager = FALSE;
 
-// Dummy State
+
+typedef struct {
+    char displayName[256];
+    char folderPath[MAX_PATH];
+    char exePath[256];
+    HANDLE hProcess;
+    int timeSec;
+    BOOL active;
+} SimulGame;
+SimulGame simulGames[100];
+
+
 int totalTime = 0, timeLeft = 0;
 int qCurrent = 1, qTotal = 1;
 char dgeFolderPath[MAX_PATH] = { 0 };
 char queueFilePath[MAX_PATH] = { 0 };
 char currentGameName[256] = { 0 };
 HWND hTimerLabel, hProgressLabel, hQueueStatusLabel, hGameLabel, hBtnCancel;
+BOOL finishedNaturally = FALSE;
+BOOL isSilent = FALSE;
 
-// --- UTILITY: Math Equation Evaluator ---
+
 int EvalExpr(const char** p);
 int ParseFactor(const char** p) {
     while (**p == ' ') (*p)++;
@@ -87,56 +102,70 @@ int EvalExpr(const char** p) {
     return val;
 }
 
-// --- UTILITY: Fuzzy String Matcher ---
+
 BOOL FuzzyCompare(const char* s1, const char* s2) {
     while (*s1 || *s2) {
-        // Preserves letters, numbers, AND multi-byte UTF-8 special characters (>= 0x80)
+
         while (*s1 && !((*s1 >= 'A' && *s1 <= 'Z') || (*s1 >= 'a' && *s1 <= 'z') || (*s1 >= '0' && *s1 <= '9') || (unsigned char)*s1 >= 0x80)) s1++;
         while (*s2 && !((*s2 >= 'A' && *s2 <= 'Z') || (*s2 >= 'a' && *s2 <= 'z') || (*s2 >= '0' && *s2 <= '9') || (unsigned char)*s2 >= 0x80)) s2++;
-        
+
         char c1 = (*s1 >= 'A' && *s1 <= 'Z') ? *s1 + 32 : *s1;
         char c2 = (*s2 >= 'A' && *s2 <= 'Z') ? *s2 + 32 : *s2;
         if (c1 != c2) return FALSE;
-        
+
         if (*s1) s1++;
         if (*s2) s2++;
     }
     return TRUE;
 }
 
-// --- UTILITY: JSON Fetcher
+
+void NormalizePath(char* dest, const char* src) {
+    char* w = dest;
+    while (*src) {
+        if (*src == '/') { *w++ = '\\'; *w++ = '\\'; }
+        else if (*src == '\\') {
+            *w++ = '\\'; *w++ = '\\';
+            if (*(src + 1) == '\\') src++;
+        } else { *w++ = *src; }
+        src++;
+    }
+    *w = '\0';
+}
+
+
 char* FetchJSON(const char* url) {
     HINTERNET hInternet = InternetOpenA("DGE_App/1.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) return NULL;
 
-    // OPTIMIZATION 2: Direct-To-Web Flags
-    // This strictly forbids Windows from checking or writing to your hard drive's local cache.
+
+
     DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_NO_CACHE_WRITE;
     HINTERNET hUrl = InternetOpenUrlA(hInternet, url, NULL, 0, flags, 0);
     if (!hUrl) { InternetCloseHandle(hInternet); return NULL; }
 
-    // OPTIMIZATION 1: Precise Memory Allocation
-    // Ask GitHub exactly how many bytes the file is before we even start downloading.
+
+
     DWORD contentLength = 0;
     DWORD lengthSize = sizeof(contentLength);
     HttpQueryInfoA(hUrl, HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER, &contentLength, &lengthSize, NULL);
 
-    // If GitHub tells us the size, we buy a memory box exactly that size (plus a tiny safety margin).
-    // If GitHub hides the size, we start with a massive 512KB box instead of 64KB so it never has to resize.
-    DWORD bufSize = (contentLength > 0) ? (contentLength + 1024) : 524288; 
-    
+
+
+    DWORD bufSize = (contentLength > 0) ? (contentLength + 1024) : 524288;
+
     char* buffer = (char*)malloc(bufSize);
     if (!buffer) { InternetCloseHandle(hUrl); InternetCloseHandle(hInternet); return NULL; }
 
     DWORD bytesRead = 0;
     DWORD totalBytes = 0;
 
-    // The download loop
+
     while (InternetReadFile(hUrl, buffer + totalBytes, bufSize - totalBytes - 1, &bytesRead) && bytesRead > 0) {
         totalBytes += bytesRead;
         buffer[totalBytes] = '\0';
-        
-        // Safety net: Only resizes if GitHub lied about the file size
+
+
         if (bufSize - totalBytes < 4096) {
             bufSize *= 2;
             char* newBuffer = (char*)realloc(buffer, bufSize);
@@ -144,13 +173,13 @@ char* FetchJSON(const char* url) {
             buffer = newBuffer;
         }
     }
-    
-    InternetCloseHandle(hUrl); 
+
+    InternetCloseHandle(hUrl);
     InternetCloseHandle(hInternet);
     return buffer;
 }
 
-// --- UTILITY: String Parser ---
+
 BOOL ParseGame(const char* json, const char* target, char* outPrimary, char* outExe) {
     const char* p = json;
     while (p && (p = strstr(p, "\"names\"")) != NULL) {
@@ -192,7 +221,7 @@ BOOL ParseGame(const char* json, const char* target, char* outPrimary, char* out
                         memset(outExe, 0, 256);
                         strncpy(outExe, exeStart, exeLen);
                         strcpy(outPrimary, primary);
-                        
+
                         char *read = outExe, *write = outExe;
                         while (*read) {
                             if (*read == '\\' && *(read + 1) == '\\') { *write++ = '\\'; read += 2; }
@@ -209,16 +238,16 @@ BOOL ParseGame(const char* json, const char* target, char* outPrimary, char* out
     return FALSE;
 }
 
-// --- UTILITY: Trigger Next Queue or Universal Wipe ---
-void ProcessQueueBaton() {
+
+void ProcessQueueBaton(BOOL abortQueue) {
     char cmd[MAX_PATH * 3];
     char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
-    
-    if (qCurrent < qTotal) {
-        // Find next game in queue file, update file, and launch
+
+    if (!abortQueue && qCurrent < qTotal) {
+
         FILE* f = fopen(queueFilePath, "r");
         char nextBaseDir[MAX_PATH] = { 0 };
-        
+
         if (f) {
             char fileData[8192] = { 0 };
             fread(fileData, 1, 8192, f);
@@ -232,11 +261,11 @@ void ProcessQueueBaton() {
             f = fopen(queueFilePath, "w");
             if (f) { fwrite(fileData, 1, strlen(fileData), f); fclose(f); }
 
-            // Parse next game details
+
             char nextTarget[32]; sprintf(nextTarget, "\n%d|", qCurrent + 1);
             char* line = strstr(fileData, nextTarget);
             if (line) {
-                line++; // skip newline
+                line++;
                 char tIdx[16], dName[256], fName[256], ePath[256], tSec[32];
                 sscanf(line, "%[^|]|%[^|]|%[^|]|%[^|]|%s", tIdx, dName, fName, ePath, tSec);
 
@@ -254,53 +283,53 @@ void ProcessQueueBaton() {
 
                 char nextCmdLine[MAX_PATH * 3];
                 sprintf(nextCmdLine, "\"%s\" -queue \"%s\"", nextExePath, queueFilePath);
-                
+
                 STARTUPINFOA si = { sizeof(si) };
                 PROCESS_INFORMATION pi;
                 CreateProcessA(NULL, nextCmdLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
             }
         }
-        
-        // INTERMEDIATE WIPE: Deletes all DGE_ folders EXCEPT the one we just created for Game 2
+
+
         sprintf(cmd, "/c ping 127.0.0.1 -n 2 > nul & for /d %%x in (\"%sDGE_*\") do if /i not \"%%~fx\"==\"%s\" rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\"", tempDir, nextBaseDir, tempDir);
         ShellExecuteA(NULL, "open", "cmd.exe", cmd, NULL, SW_HIDE);
     } else {
-        // FINAL WIPE: Annihilates EVERYTHING starting with DGE_ in Temp, deletes queue file
+
         sprintf(cmd, "/c ping 127.0.0.1 -n 2 > nul & for /d %%x in (\"%sDGE_*\") do rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\" & del /q /f \"%s\"", tempDir, tempDir, queueFilePath);
         ShellExecuteA(NULL, "open", "cmd.exe", cmd, NULL, SW_HIDE);
     }
 }
 
-// --- FONT HELPER ---
+
 BOOL CALLBACK SetFontProc(HWND hwndChild, LPARAM lParam) {
     SendMessage(hwndChild, WM_SETFONT, (WPARAM)lParam, TRUE);
     return TRUE;
 }
 
-// --- DUMMY APP WINDOW PROC ---
+
 LRESULT CALLBACK DummyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_CREATE: {
         char qStr[64]; sprintf(qStr, "Game %d of %d", qCurrent, qTotal);
-        
-        hQueueStatusLabel = CreateWindowA("STATIC", qStr, WS_CHILD | WS_VISIBLE | SS_CENTER, 20, 10, 240, 20, hwnd, NULL, NULL, NULL);
-        
-        hGameLabel = CreateWindowA("STATIC", currentGameName, WS_CHILD | WS_VISIBLE | SS_CENTER, 20, 35, 240, 20, hwnd, NULL, NULL, NULL);
-        
-        hTimerLabel = CreateWindowA("STATIC", "Time Remaining: --", WS_CHILD | WS_VISIBLE | SS_CENTER, 20, 60, 240, 20, hwnd, NULL, NULL, NULL);
-        hProgressLabel = CreateWindowA("STATIC", "Progress: 0%", WS_CHILD | WS_VISIBLE | SS_CENTER, 20, 85, 240, 20, hwnd, NULL, NULL, NULL);
-        hBtnCancel = CreateWindowA("BUTTON", "Terminate", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 80, 120, 120, 30, hwnd, (HMENU)1, NULL, NULL);
-        
+
+        hQueueStatusLabel = CreateWindowA("STATIC", qStr, WS_CHILD | WS_VISIBLE | SS_CENTER, 27, 10, 240, 20, hwnd, NULL, NULL, NULL);
+
+        hGameLabel = CreateWindowA("STATIC", currentGameName, WS_CHILD | WS_VISIBLE | SS_CENTER, 27, 35, 240, 20, hwnd, NULL, NULL, NULL);
+
+        hTimerLabel = CreateWindowA("STATIC", "Time Remaining: --", WS_CHILD | WS_VISIBLE | SS_CENTER, 27, 60, 240, 20, hwnd, NULL, NULL, NULL);
+        hProgressLabel = CreateWindowA("STATIC", "Progress: 0%", WS_CHILD | WS_VISIBLE | SS_CENTER, 27, 85, 240, 20, hwnd, NULL, NULL, NULL);
+        hBtnCancel = CreateWindowA("BUTTON", "Terminate", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 87, 120, 120, 30, hwnd, (HMENU)1, NULL, NULL);
+
         SetTimer(hwnd, 1, 1000, NULL);
         EnumChildWindows(hwnd, SetFontProc, (LPARAM)hFont);
-        // --- RAM Trim ---
+
         SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
         break;
     }
     case WM_TIMER: {
         timeLeft--;
-        if (timeLeft <= 0) { PostMessage(hwnd, WM_CLOSE, 0, 0); return 0; }
-        
+        if (timeLeft <= 0) { finishedNaturally = TRUE; PostMessage(hwnd, WM_CLOSE, 0, 0); return 0; }
+
         char buf[64];
         sprintf(buf, "Time Remaining: %dm %02ds", timeLeft / 60, timeLeft % 60);
         SetWindowTextA(hTimerLabel, buf);
@@ -317,7 +346,7 @@ LRESULT CALLBACK DummyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         LPDRAWITEMSTRUCT p = (LPDRAWITEMSTRUCT)lParam;
         FillRect(p->hDC, &p->rcItem, hBtnBrush);
         SetBkMode(p->hDC, TRANSPARENT); SetTextColor(p->hDC, clrText);
-        
+
         char btnText[32]; GetWindowTextA(p->hwndItem, btnText, 32);
         DrawTextA(p->hDC, btnText, -1, &p->rcItem, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
         return TRUE;
@@ -327,12 +356,20 @@ LRESULT CALLBACK DummyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_CLOSE:
     case WM_DESTROY:
         KillTimer(hwnd, 1);
-        ProcessQueueBaton();
-        PostQuitMessage(0);
+        if (isSilent) {
+
+            char cmd[MAX_PATH * 2];
+            sprintf(cmd, "/c ping 127.0.0.1 -n 2 > nul & rmdir /s /q \"%s\"", dgeFolderPath);
+            ShellExecuteA(NULL, "open", "cmd.exe", cmd, NULL, SW_HIDE);
+            PostQuitMessage(0);
+        } else {
+            ProcessQueueBaton(!finishedNaturally);
+            PostQuitMessage(0);
+        }
         break;
     default: return DefWindowProc(hwnd, msg, wParam, lParam);
     case WM_ACTIVATE:
-        // If the user clicks off the Dummy window (unfocuses it), flush the RAM again
+
         if (LOWORD(wParam) == WA_INACTIVE) {
             SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
         }
@@ -341,33 +378,27 @@ LRESULT CALLBACK DummyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
-// --- UTILITY: Background Download Thread ---
+
 DWORD WINAPI BackgroundDownloadThread(LPVOID lpParam) {
     globalJsonData = FetchJSON(JSON_URL);
     return 0;
 }
 
-// --- QUEUE EXECUTION LOGIC (Called by Start Queue or Launch Game) ---
-void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
-    if (isSingleShot) {
+void UpdateSimulList(HWND hwnd, HWND hList);
+
+
+void ExecuteQueue(HWND hwnd, int executeMode) {
+    char currentExe[MAX_PATH];
+    GetModuleFileNameA(NULL, currentExe, MAX_PATH);
+
+    if (executeMode == 0) {
         char gInput[256], cExe[256], tInput[32];
         GetWindowTextA(hGameName, gInput, 256); GetWindowTextA(hCustomExe, cExe, 256); GetWindowTextA(hTime, tInput, 32);
-        // Convert all slashes to double backslashes '\\'
+
         char tempExe[512] = { 0 };
-            char *r = cExe, *w = tempExe;
-            while (*r) {
-                if (*r == '/') {
-                    *w++ = '\\'; *w++ = '\\'; // Turn '/' into '\\'
-                } else if (*r == '\\') {
-                    *w++ = '\\'; *w++ = '\\'; // Turn '\' into '\\'
-                    if (*(r + 1) == '\\') r++; // Skip if it was already '\\'
-                } else {
-                    *w++ = *r;
-                }
-                r++;
-            }
-            *w = '\0';
-            strcpy(cExe, tempExe); // Copy the fixed text back into cExe
+            NormalizePath(tempExe, cExe);
+            strcpy(cExe, tempExe);
+
         const char* mathPtr = tInput; int t = EvalExpr(&mathPtr);
         if (t <= 0 || (strlen(gInput) == 0 && strlen(cExe) == 0)) {
             MessageBoxA(hwnd, "Please enter a Game Name or Custom EXE, and a valid Time.", "Error", MB_ICONERROR | MB_OK); return;
@@ -378,34 +409,37 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
         if (queueCount == 0) { MessageBoxA(hwnd, "Queue is empty!", "Error", MB_ICONERROR | MB_OK); return; }
     }
 
-    // If the user clicks Launch insanely fast before the background thread finishes, wait for it (up to 5 seconds max)
-    int waitLoops = 0;
-    while (!globalJsonData && waitLoops < 50) { Sleep(100); waitLoops++; }
-
-    char currentExe[MAX_PATH]; GetModuleFileNameA(NULL, currentExe, MAX_PATH);
     char fileBuf[8192] = { 0 };
     sprintf(fileBuf, "TOTAL=%d\nCURRENT=1\n", queueCount);
 
     for (int i = 0; i < queueCount; i++) {
         char primaryName[256] = { 0 }, exePath[256] = { 0 };
-        BOOL found = FALSE;
 
-        // Search from RAM
-        if (globalJsonData) {
-            found = ParseGame(globalJsonData, queue[i].gameName, primaryName, exePath);
+
+        if (strlen(queue[i].customExe) > 0) {
+            strcpy(exePath, queue[i].customExe);
+            strcpy(primaryName, strlen(queue[i].gameName) > 0 ? queue[i].gameName : "CustomGame");
         }
 
-        if (strlen(queue[i].customExe) > 0) strcpy(exePath, queue[i].customExe);
-        if (strlen(primaryName) == 0) strcpy(primaryName, strlen(queue[i].gameName) > 0 ? queue[i].gameName : "CustomGame");
+        else {
+
+            int waitLoops = 0;
+            while (!globalJsonData && waitLoops < 50) { Sleep(100); waitLoops++; }
+
+            if (globalJsonData) {
+                ParseGame(globalJsonData, queue[i].gameName, primaryName, exePath);
+            }
+        }
+
 
         if (strlen(exePath) == 0) {
-            char err[512]; sprintf(err, "Could not find path for game: '%s'. Check for spelling errors, or enter a custom EXE path.", queue[i].gameName);
+            char err[512]; sprintf(err, "Could not find path for game: '%s'. Check for spelling errors, entering a custom EXE path or finding your game in the game database", queue[i].gameName);
             MessageBoxA(hwnd, err, "Error", MB_ICONERROR | MB_OK);
-            if(isSingleShot) queueCount = 0; // reset
+            if (executeMode == 0) queueCount = 0;
             return;
         }
 
-        // Sanitize folder name, but keep original for display
+
         char folderName[256];
         char* r = primaryName; char* w = folderName;
         while (*r) {
@@ -415,18 +449,82 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
             r++;
         }
         *w = '\0';
-        
-        // Notice the extra %s -> Index | DisplayName | FolderName | ExePath | Time
+
+
+        if (executeMode == 2) {
+            char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
+            sprintf(simulGames[i].folderPath, "%sDGE_%s", tempDir, folderName);
+            strcpy(simulGames[i].exePath, exePath);
+            strcpy(simulGames[i].displayName, primaryName);
+            simulGames[i].timeSec = queue[i].timeSec;
+            simulGames[i].active = TRUE;
+        }
+
         sprintf(fileBuf + strlen(fileBuf), "%d|%s|%s|%s|%d\n", i + 1, primaryName, folderName, exePath, queue[i].timeSec);
     }
 
-    // Save QueueSession.txt
+
+    if (executeMode == 2) {
+        if (globalJsonData) {
+            free(globalJsonData);
+            globalJsonData = NULL;
+        }
+        if (hSearchWnd) {
+            DestroyWindow(hSearchWnd);
+            hSearchWnd = NULL;
+        }
+        isSimulManager = TRUE;
+        SetWindowPos(hwnd, NULL, 0, 0, 360, 420, SWP_NOMOVE | SWP_NOZORDER);
+
+
+        ShowWindow(hGameName, SW_HIDE); ShowWindow(hCustomExe, SW_HIDE); ShowWindow(hTime, SW_HIDE);
+        ShowWindow(hBtnAddQueue, SW_HIDE); ShowWindow(hBtnRemoveQueue, SW_HIDE); ShowWindow(hBtnStartQueue, SW_HIDE);
+        ShowWindow(hBtnToggleQueue, SW_HIDE); ShowWindow(hBtnSearch, SW_HIDE); ShowWindow(hQueueLabel, SW_HIDE);
+
+
+        SetWindowPos(hListBox, NULL, 27, 20, 300, 300, SWP_NOZORDER);
+
+        ShowWindow(hBtnTerminateSimul, SW_SHOW);
+        ShowWindow(hBtnTerminateAllSimul, SW_SHOW);
+
+        SetWindowPos(hBtnTerminateSimul, NULL, 27, 330, 145, 30, SWP_NOZORDER);
+        SetWindowPos(hBtnTerminateAllSimul, NULL, 182, 330, 145, 30, SWP_NOZORDER);
+
+
+        for(int i=0; i<queueCount; i++) {
+            char dirToCreate[MAX_PATH];
+
+            sprintf(dirToCreate, "%s\\%s", simulGames[i].folderPath, simulGames[i].exePath);
+            char* lastSlash = strrchr(dirToCreate, '\\');
+            if (lastSlash) *lastSlash = '\0';
+            SHCreateDirectoryExA(NULL, dirToCreate, NULL);
+
+            char targetExe[MAX_PATH];
+            sprintf(targetExe, "%s\\%s", simulGames[i].folderPath, simulGames[i].exePath);
+            CopyFileA(currentExe, targetExe, FALSE);
+
+            char cmdLine[MAX_PATH * 3];
+            sprintf(cmdLine, "\"%s\" -silent %d \"%s\"", targetExe, simulGames[i].timeSec, simulGames[i].folderPath);
+
+            STARTUPINFOA si = { sizeof(si) }; PROCESS_INFORMATION pi;
+            if (CreateProcessA(NULL, cmdLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+                simulGames[i].hProcess = pi.hProcess;
+                CloseHandle(pi.hThread);
+            }
+        }
+
+        SetTimer(hwnd, 2, 1000, NULL);
+        UpdateSimulList(hwnd, hListBox);
+        SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
+        return;
+    }
+
+
     char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
     sprintf(queueFilePath, "%sQueueSession.txt", tempDir);
     FILE* f = fopen(queueFilePath, "w");
     if (f) { fwrite(fileBuf, 1, strlen(fileBuf), f); fclose(f); }
 
-    // Read details for Game 1 to launch the chain
     char dName[256], fName[256], ePath[256];
     char searchStr[16]; sprintf(searchStr, "\n1|");
     char* line1 = strstr(fileBuf, searchStr);
@@ -448,13 +546,11 @@ void ExecuteQueue(HWND hwnd, BOOL isSingleShot) {
     STARTUPINFOA si = { sizeof(si) }; PROCESS_INFORMATION pi;
     if (CreateProcessA(NULL, cmdLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
         CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
-        PostQuitMessage(0); // Exit main
-    } else {
-        MessageBoxA(hwnd, "Failed to launch game 1.", "Error", MB_ICONERROR | MB_OK);
+        PostQuitMessage(0);
     }
 }
 
-// --- UTILITY: Search Result Struct & Sorter ---
+
 typedef struct {
     char name[256];
     int score;
@@ -463,18 +559,18 @@ typedef struct {
 int CompareResults(const void* a, const void* b) {
     SearchResult* r1 = (SearchResult*)a;
     SearchResult* r2 = (SearchResult*)b;
-    if (r1->score != r2->score) return r2->score - r1->score; // Highest score at the top
-    return lstrcmpiA(r1->name, r2->name); // If tied, sort alphabetically
+    if (r1->score != r2->score) return r2->score - r1->score;
+    return lstrcmpiA(r1->name, r2->name);
 }
 
-// --- UTILITY: Tiered Search Scorer ---
+
 int FuzzyScore(const char* target, const char* query) {
-    if (!query || !*query) return 1; // Empty search box shows everything
-    
+    if (!query || !*query) return 1;
+
     char nT[512] = {0}, nQ[512] = {0};
     int i = 0, j = 0;
-    
-    // Normalize target & query (lowercase, alphanumeric/special characters only)
+
+
     for (const char* p = target; *p && i < 511; p++) {
         unsigned char c = (unsigned char)*p;
         if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c >= 0x80)
@@ -485,29 +581,29 @@ int FuzzyScore(const char* target, const char* query) {
         if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c >= 0x80)
             nQ[j++] = (c >= 'A' && c <= 'Z') ? c + 32 : c;
     }
-    
+
     if (j == 0) return 1;
 
-    // Rank 4: Exact Match
-    if (strcmp(nT, nQ) == 0) return 4; 
 
-    // Rank 3: Starts With (Prefix Match)
+    if (strcmp(nT, nQ) == 0) return 4;
+
+
     BOOL isPrefix = TRUE;
     for (int k = 0; k < j; k++) {
         if (nT[k] != nQ[k]) { isPrefix = FALSE; break; }
     }
     if (isPrefix) return 3;
 
-    // Rank 2: Substring Match
+
     if (strstr(nT, nQ) != NULL) return 2;
 
-    return 0; // Rank 0: No Match
+    return 0;
 }
 
-// --- UTILITY: Execute the Search Engine ---
+
 void PerformSearch(HWND hList, const char* query) {
-    SendMessageA(hList, WM_SETREDRAW, FALSE, 0); 
-    SendMessageA(hList, LB_RESETCONTENT, 0, 0);  
+    SendMessageA(hList, WM_SETREDRAW, FALSE, 0);
+    SendMessageA(hList, LB_RESETCONTENT, 0, 0);
 
     if (!globalJsonData) {
         SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)"Loading database...");
@@ -519,7 +615,7 @@ void PerformSearch(HWND hList, const char* query) {
     SearchResult* results = (SearchResult*)malloc(sizeof(SearchResult) * maxRes);
     int resCount = 0;
 
-    // Check if the user typed an actual search term (letters/numbers/special chars)
+
     BOOL hasQuery = FALSE;
     if (query) {
         for (const char* p = query; *p; p++) {
@@ -554,10 +650,10 @@ void PerformSearch(HWND hList, const char* query) {
             strncpy(alias, strStart, len);
 
             if (!hasPrimary) { strcpy(primary, alias); hasPrimary = TRUE; }
-            
+
             int score = FuzzyScore(alias, query);
             if (score > bestScore) bestScore = score;
-            
+
             strStart = strEnd + 1;
         }
 
@@ -574,22 +670,22 @@ void PerformSearch(HWND hList, const char* query) {
     }
 
     if (resCount > 0) {
-        // ONLY sort if the user actually typed in the search box
-        // If the box is empty, it preserves JSON order
+
+
         if (hasQuery) {
             qsort(results, resCount, sizeof(SearchResult), CompareResults);
         }
-        
+
         for (int i = 0; i < resCount; i++) {
             SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)results[i].name);
         }
     }
 
     free(results);
-    SendMessageA(hList, WM_SETREDRAW, TRUE, 0); 
+    SendMessageA(hList, WM_SETREDRAW, TRUE, 0);
 }
 
-// --- SEARCH APP WINDOW PROC ---
+
 LRESULT CALLBACK SearchWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_CREATE: {
@@ -597,14 +693,14 @@ LRESULT CALLBACK SearchWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         hSearchEdit = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 12, 30, 270, 22, hwnd, (HMENU)101, NULL, NULL);
         hSearchList = CreateWindowA("LISTBOX", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY, 12, 60, 270, 280, hwnd, (HMENU)102, NULL, NULL);
         EnumChildWindows(hwnd, SetFontProc, (LPARAM)hFont);
-        
-        // If data isn't here yet, start a fast timer to check for it
-        if (!globalJsonData) SetTimer(hwnd, 1, 200, NULL); 
+
+
+        if (!globalJsonData) SetTimer(hwnd, 1, 200, NULL);
         PerformSearch(hSearchList, "");
         break;
     }
     case WM_TIMER: {
-        // The moment the background download finishes, refresh the list
+
         if (wParam == 1 && globalJsonData) {
             KillTimer(hwnd, 1);
             char query[256];
@@ -616,30 +712,30 @@ LRESULT CALLBACK SearchWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
     case WM_COMMAND: {
         int id = LOWORD(wParam);
         int code = HIWORD(wParam);
-        
-        // Did the user type something in the Search Box?
+
+
         if (id == 101 && code == EN_CHANGE) {
             char query[256];
             GetWindowTextA(hSearchEdit, query, 256);
-            PerformSearch(hSearchList, query); // Filter the list
+            PerformSearch(hSearchList, query);
         }
-        // Did the user DOUBLE-CLICK a game in the list?
+
         else if (id == 102 && code == LBN_DBLCLK) {
             int sel = SendMessageA(hSearchList, LB_GETCURSEL, 0, 0);
             if (sel != LB_ERR) {
                 char selectedGame[256] = { 0 };
                 SendMessageA(hSearchList, LB_GETTEXT, sel, (LPARAM)selectedGame);
-                
-                // AUTO-FILL the main launcher's Game Name box!
+
+
                 SetWindowTextA(hGameName, selectedGame);
-                
-                // --- NEW: Instantly look up and AUTO-FILL the EXE Path! ---
+
+
                 char dummyName[256] = { 0 }, exePath[256] = { 0 };
                 if (globalJsonData && ParseGame(globalJsonData, selectedGame, dummyName, exePath)) {
                     SetWindowTextA(hCustomExe, exePath);
                 }
-                
-                // Close the search window
+
+
                 DestroyWindow(hwnd);
                 hSearchWnd = NULL;
             }
@@ -653,27 +749,54 @@ LRESULT CALLBACK SearchWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         SetTextColor((HDC)wParam, clrText); SetBkColor((HDC)wParam, clrEditBg); return (LRESULT)hEditBrush;
     case WM_CLOSE:
         DestroyWindow(hwnd);
-        hSearchWnd = NULL; 
+        hSearchWnd = NULL;
         break;
     default: return DefWindowProc(hwnd, msg, wParam, lParam);
     }
     return 0;
 }
 
-// --- MAIN APP WINDOW PROC ---
+
+void UpdateSimulList(HWND hwnd, HWND hList) {
+    SendMessageA(hList, WM_SETREDRAW, FALSE, 0);
+    SendMessageA(hList, LB_RESETCONTENT, 0, 0);
+    int activeCount = 0;
+
+    for (int i = 0; i < queueCount; i++) {
+        if (simulGames[i].active) {
+            activeCount++;
+            char buf[300];
+            sprintf(buf, "[%dm %02ds] %s", simulGames[i].timeSec / 60, simulGames[i].timeSec % 60, simulGames[i].displayName);
+            int idx = SendMessageA(hList, LB_ADDSTRING, 0, (LPARAM)buf);
+            SendMessageA(hList, LB_SETITEMDATA, idx, i);
+        }
+    }
+    SendMessageA(hList, WM_SETREDRAW, TRUE, 0);
+
+
+    if (activeCount == 0) {
+        char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
+        char cleanCmd[MAX_PATH * 3];
+        sprintf(cleanCmd, "/c ping 127.0.0.1 -n 2 > nul & for /d %%x in (\"%sDGE_*\") do rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\"", tempDir, tempDir);
+        ShellExecuteA(NULL, "open", "cmd.exe", cleanCmd, NULL, SW_HIDE);
+        PostQuitMessage(0);
+    }
+}
+
+
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_CREATE: {
-        CreateWindowA("STATIC", "Game Name (or alias):", WS_CHILD | WS_VISIBLE, 20, 20, 200, 20, hwnd, NULL, NULL, NULL);
-        hGameName = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 20, 40, 240, 22, hwnd, NULL, NULL, NULL);
+        CreateWindowA("STATIC", "Game Name (or alias):", WS_CHILD | WS_VISIBLE, 27, 25, 200, 20, hwnd, NULL, NULL, NULL);
+        hGameName = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 27, 45, 240, 22, hwnd, NULL, NULL, NULL);
 
-        CreateWindowA("STATIC", "Custom EXE Path (Optional):", WS_CHILD | WS_VISIBLE, 20, 70, 200, 20, hwnd, NULL, NULL, NULL);
-        hCustomExe = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 20, 90, 240, 22, hwnd, NULL, NULL, NULL);
+        CreateWindowA("STATIC", "Custom EXE Path (Optional):", WS_CHILD | WS_VISIBLE, 27, 75, 200, 20, hwnd, NULL, NULL, NULL);
+        hCustomExe = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 27, 95, 240, 22, hwnd, NULL, NULL, NULL);
 
-        CreateWindowA("STATIC", "Time (Seconds or Math):", WS_CHILD | WS_VISIBLE, 20, 120, 200, 20, hwnd, NULL, NULL, NULL);
-        hTime = CreateWindowA("EDIT", "910", WS_CHILD | WS_VISIBLE | WS_BORDER, 20, 140, 100, 22, hwnd, NULL, NULL, NULL);
+        CreateWindowA("STATIC", "Time (Seconds or Math):", WS_CHILD | WS_VISIBLE, 27, 125, 200, 20, hwnd, NULL, NULL, NULL);
+        hTime = CreateWindowA("EDIT", "910", WS_CHILD | WS_VISIBLE | WS_BORDER, 27, 145, 100, 22, hwnd, NULL, NULL, NULL);
 
-        hBtnLaunch = CreateWindowA("BUTTON", "Emulate", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 80, 180, 120, 30, hwnd, (HMENU)2, NULL, NULL);
+        hBtnLaunch = CreateWindowA("BUTTON", "Emulate", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 87, 185, 120, 30, hwnd, (HMENU)2, NULL, NULL);
         hBtnToggleQueue = CreateWindowA("BUTTON", "", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 255, 10, 25, 25, hwnd, (HMENU)3, NULL, NULL);
         char* verData = FetchJSON(VERSION_URL);
         BOOL updateFound = FALSE;
@@ -686,52 +809,85 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         }
         hBtnUpdate = CreateWindowA("BUTTON", "", WS_CHILD | (updateFound ? WS_VISIBLE : 0) | BS_OWNERDRAW, 195, 10, 25, 25, hwnd, (HMENU)7, NULL, NULL);
         hBtnSearch = CreateWindowA("BUTTON", "", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 225, 10, 25, 25, hwnd, (HMENU)8, NULL, NULL);
-        hQueueLabel = CreateWindowA("STATIC", "Session Queue:", WS_CHILD, 310, 20, 200, 20, hwnd, NULL, NULL, NULL);
+        hQueueLabel = CreateWindowA("STATIC", "Emulation Queue:", WS_CHILD, 310, 20, 200, 20, hwnd, NULL, NULL, NULL);
         hListBox = CreateWindowA("LISTBOX", NULL, WS_CHILD | WS_BORDER | WS_VSCROLL | LBS_NOTIFY, 310, 40, 250, 122, hwnd, NULL, NULL, NULL);
-        hBtnAddQueue = CreateWindowA("BUTTON", "Add to Queue", WS_CHILD | BS_OWNERDRAW, 80, 180, 120, 30, hwnd, (HMENU)4, NULL, NULL);
+        hBtnAddQueue = CreateWindowA("BUTTON", "Add to Queue", WS_CHILD | BS_OWNERDRAW, 87, 185, 120, 30, hwnd, (HMENU)4, NULL, NULL);
         hBtnRemoveQueue = CreateWindowA("BUTTON", "Remove", WS_CHILD | BS_OWNERDRAW, 310, 180, 90, 30, hwnd, (HMENU)5, NULL, NULL);
         hBtnStartQueue = CreateWindowA("BUTTON", "Start Queue", WS_CHILD | BS_OWNERDRAW, 460, 180, 100, 30, hwnd, (HMENU)6, NULL, NULL);
-
+        hBtnTerminateSimul = CreateWindowA("BUTTON", "Terminate Selected", WS_CHILD | BS_OWNERDRAW, 0, 0, 0, 0, hwnd, (HMENU)9, NULL, NULL);
+        hBtnTerminateAllSimul = CreateWindowA("BUTTON", "Terminate All", WS_CHILD | BS_OWNERDRAW, 0, 0, 0, 0, hwnd, (HMENU)10, NULL, NULL);
         EnumChildWindows(hwnd, SetFontProc, (LPARAM)hFont);
         break;
     }
+
+    case WM_TIMER: {
+        if (wParam == 2 && isSimulManager) {
+            BOOL changed = FALSE;
+            for (int i = 0; i < queueCount; i++) {
+                if (simulGames[i].active) {
+                    simulGames[i].timeSec--;
+
+                    if (simulGames[i].timeSec <= 0 || WaitForSingleObject(simulGames[i].hProcess, 0) == WAIT_OBJECT_0) {
+                        simulGames[i].active = FALSE;
+                        changed = TRUE;
+                    } else {
+                        changed = TRUE;
+                    }
+                }
+            }
+            if (changed) {
+                int sel = SendMessageA(hListBox, LB_GETCURSEL, 0, 0);
+                UpdateSimulList(hwnd, hListBox);
+                if (sel != LB_ERR) SendMessageA(hListBox, LB_SETCURSEL, sel, 0);
+            }
+        }
+        break;
+    }
+
     case WM_COMMAND: {
         int id = LOWORD(wParam);
-        if (id == 2) { ExecuteQueue(hwnd, TRUE); } // Single Launch
-        else if (id == 6) { ExecuteQueue(hwnd, FALSE); } // Start Queue
-        else if (id == 3) { // Toggle Mode
-            isQueueMode = !isQueueMode;
-            SetWindowPos(hwnd, NULL, 0, 0, isQueueMode ? 600 : 300, 280, SWP_NOMOVE | SWP_NOZORDER);
-            ShowWindow(hBtnLaunch, isQueueMode ? SW_HIDE : SW_SHOW);
-            ShowWindow(hBtnAddQueue, isQueueMode ? SW_SHOW : SW_HIDE);
-            ShowWindow(hListBox, isQueueMode ? SW_SHOW : SW_HIDE);
-            ShowWindow(hQueueLabel, isQueueMode ? SW_SHOW : SW_HIDE);
-            ShowWindow(hBtnRemoveQueue, isQueueMode ? SW_SHOW : SW_HIDE);
-            ShowWindow(hBtnStartQueue, isQueueMode ? SW_SHOW : SW_HIDE);
-            InvalidateRect(hwnd, NULL, TRUE);
+        if (id == 2) { ExecuteQueue(hwnd, 0); }
+        else if (id == 6) { ExecuteQueue(hwnd, appMode); }
+        else if (id == 3) {
+            appMode++;
+            if (appMode > 2) appMode = 0;
+
+            if (appMode == 0) {
+                SetWindowPos(hwnd, NULL, 0, 0, 300, 280, SWP_NOMOVE | SWP_NOZORDER);
+                ShowWindow(hBtnLaunch, SW_SHOW); ShowWindow(hBtnAddQueue, SW_HIDE); ShowWindow(hListBox, SW_HIDE);
+                ShowWindow(hQueueLabel, SW_HIDE); ShowWindow(hBtnRemoveQueue, SW_HIDE); ShowWindow(hBtnStartQueue, SW_HIDE);
+            }
+            else {
+                SetWindowPos(hwnd, NULL, 0, 0, 600, 280, SWP_NOMOVE | SWP_NOZORDER);
+                ShowWindow(hBtnLaunch, SW_HIDE); ShowWindow(hBtnAddQueue, SW_SHOW); ShowWindow(hListBox, SW_SHOW);
+                ShowWindow(hQueueLabel, SW_SHOW); ShowWindow(hBtnRemoveQueue, SW_SHOW); ShowWindow(hBtnStartQueue, SW_SHOW);
+
+                if (appMode == 1) {
+                    SetWindowTextA(hBtnAddQueue, "Add to Queue");
+                    SetWindowTextA(hBtnStartQueue, "Start Queue");
+                    SetWindowTextA(hQueueLabel, "Queued Emulation List:");
+                } else {
+                    SetWindowTextA(hBtnAddQueue, "Add to List");
+                    SetWindowTextA(hBtnStartQueue, "Start All");
+                    SetWindowTextA(hQueueLabel, "Simultaneous Emulation List:");
+                }
+
+
+                InvalidateRect(hBtnAddQueue, NULL, TRUE);
+                InvalidateRect(hBtnStartQueue, NULL, TRUE);
+                InvalidateRect(hQueueLabel, NULL, TRUE);
+            }
+            InvalidateRect(hBtnToggleQueue, NULL, TRUE);
         }
-        else if (id == 4) { // Add to Queue
+        else if (id == 4) {
             if (queueCount >= 100) return 0;
             char gInput[256], cExe[256], tInput[32];
             GetWindowTextA(hGameName, gInput, 256); GetWindowTextA(hCustomExe, cExe, 256); GetWindowTextA(hTime, tInput, 32);
-            
-            // Convert all slashes to double backslashes '\\'
+
             char tempExe[512] = { 0 };
-            char *r = cExe, *w = tempExe;
-            while (*r) {
-                if (*r == '/') {
-                    *w++ = '\\'; *w++ = '\\'; // Turn '/' into '\\'
-                } else if (*r == '\\') {
-                    *w++ = '\\'; *w++ = '\\'; // Turn '\' into '\\'
-                    if (*(r + 1) == '\\') r++; // Skip if it was already '\\'
-                } else {
-                    *w++ = *r;
-                }
-                r++;
-            }
-            *w = '\0';
-            strcpy(cExe, tempExe); // Copy the fixed text back into cExe
-            
+            NormalizePath(tempExe, cExe);
+            strcpy(cExe, tempExe);
+
             const char* mathPtr = tInput; int t = EvalExpr(&mathPtr);
             if (t <= 0 || (strlen(gInput) == 0 && strlen(cExe) == 0)) {
                 MessageBoxA(hwnd, "Invalid Entry.", "Error", MB_ICONERROR | MB_OK); break;
@@ -742,14 +898,14 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             queue[queueCount].timeSec = t;
             queueCount++;
 
-            char listStr[300]; 
+            char listStr[300];
             char* dispName = strlen(gInput) > 0 ? gInput : cExe;
             sprintf(listStr, "[%dm %02ds] %s", t / 60, t % 60, dispName);
             SendMessageA(hListBox, LB_ADDSTRING, 0, (LPARAM)listStr);
 
             SetWindowTextA(hGameName, ""); SetWindowTextA(hCustomExe, "");
         }
-        else if (id == 5) { // Remove from Queue
+        else if (id == 5) {
             int sel = SendMessageA(hListBox, LB_GETCURSEL, 0, 0);
             if (sel != LB_ERR) {
                 SendMessageA(hListBox, LB_DELETESTRING, sel, 0);
@@ -757,38 +913,38 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 queueCount--;
             }
         }
-        else if (id == 7) { // Update Button Clicked
+        else if (id == 7) {
             if (MessageBoxA(hwnd, "A new update is available! Do you want to download and restart the app?", "Update Available", MB_ICONQUESTION | MB_YESNO) == IDYES) {
-                
-                // Get current exe name
+
+
                 char currentExe[MAX_PATH]; GetModuleFileNameA(NULL, currentExe, MAX_PATH);
-                
-                // Set temporary update download name
+
+
                 char updateExe[MAX_PATH]; strcpy(updateExe, currentExe);
                 char* lastSlash = strrchr(updateExe, '\\');
                 if (lastSlash) strcpy(lastSlash + 1, "DGE_UpdateTemp.exe");
 
-                // Generate the hidden CMD script
+
                 char cmdStr[2048];
                 sprintf(cmdStr, "/c curl -s -L -o \"%s\" \"%s\" & ping 127.0.0.1 -n 2 > nul & move /y \"%s\" \"%s\" & start \"\" \"%s\"",
                     updateExe, updateUrl, updateExe, currentExe, currentExe);
 
-                // Launch terminal and kill the current app immediately!
+
                 ShellExecuteA(NULL, "open", "cmd.exe", cmdStr, NULL, SW_HIDE);
-                PostQuitMessage(0); 
+                PostQuitMessage(0);
             }
         }
-        else if (id == 8) { // Search Button Clicked
-            if (!hSearchWnd) { // Only open it if it isn't already open
+        else if (id == 8) {
+            if (!hSearchWnd) {
                 WNDCLASSA swc = { 0 };
                 swc.lpfnWndProc = SearchWndProc;
                 swc.hInstance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
                 swc.hbrBackground = hBgBrush;
                 swc.lpszClassName = "DgeSearchClass";
-                swc.hIcon = (HICON)SendMessageA(hwnd, WM_GETICON, ICON_SMALL, 0); // Copy main app icon
-                RegisterClassA(&swc); 
+                swc.hIcon = (HICON)SendMessageA(hwnd, WM_GETICON, ICON_SMALL, 0);
+                RegisterClassA(&swc);
 
-                // Spawn the new window
+
                 hSearchWnd = CreateWindowA("DgeSearchClass", "Game Library",
                     WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
                     CW_USEDEFAULT, CW_USEDEFAULT, 300, 369, hwnd, NULL, swc.hInstance, NULL);
@@ -800,9 +956,38 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 UpdateWindow(hSearchWnd);
                 SetFocus(hSearchEdit);
             } else {
-                SetForegroundWindow(hSearchWnd); // If it's already open, just bring it to the front
+                SetForegroundWindow(hSearchWnd);
                 SetFocus(hSearchEdit);
             }
+        }
+        else if (id == 9) {
+            int sel = SendMessageA(hListBox, LB_GETCURSEL, 0, 0);
+            if (sel != LB_ERR) {
+                int i = SendMessageA(hListBox, LB_GETITEMDATA, sel, 0);
+                if (simulGames[i].active) {
+                    TerminateProcess(simulGames[i].hProcess, 0);
+                    simulGames[i].active = FALSE;
+
+
+                    char cmd[MAX_PATH * 2];
+                    sprintf(cmd, "/c rmdir /s /q \"%s\"", simulGames[i].folderPath);
+                    ShellExecuteA(NULL, "open", "cmd.exe", cmd, NULL, SW_HIDE);
+
+                    UpdateSimulList(hwnd, hListBox);
+                }
+            }
+        }
+        else if (id == 10) {
+            for (int i = 0; i < queueCount; i++) {
+                if (simulGames[i].active) {
+
+                    TerminateProcess(simulGames[i].hProcess, 0);
+                    simulGames[i].active = FALSE;
+                }
+            }
+
+
+            UpdateSimulList(hwnd, hListBox);
         }
         break;
     }
@@ -813,52 +998,136 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         SetTextColor((HDC)wParam, clrText); SetBkColor((HDC)wParam, clrEditBg); return (LRESULT)hEditBrush;
     case WM_DRAWITEM: {
         LPDRAWITEMSTRUCT p = (LPDRAWITEMSTRUCT)lParam;
-        FillRect(p->hDC, &p->rcItem, hBtnBrush); // Draw button background
+        FillRect(p->hDC, &p->rcItem, hBtnBrush);
 
         if (p->CtlID == 7) {
-            // Draw Green Download Arrow for Update Button
-            HPEN hPen = CreatePen(PS_SOLID, 2, RGB(50, 220, 50)); // Bright Green
+
+            HPEN hPen = CreatePen(PS_SOLID, 2, RGB(50, 220, 50));
             HPEN hOldPen = SelectObject(p->hDC, hPen);
-            
-            MoveToEx(p->hDC, 12, 6, NULL); LineTo(p->hDC, 12, 16); // Arrow Stem
-            MoveToEx(p->hDC, 7, 11, NULL); LineTo(p->hDC, 13, 17); // Left Flap
-            MoveToEx(p->hDC, 17, 11, NULL); LineTo(p->hDC, 11, 17); // Right Flap
-            MoveToEx(p->hDC, 6, 19, NULL); LineTo(p->hDC, 19, 19); // Base Line
-            
+
+            MoveToEx(p->hDC, 12, 6, NULL); LineTo(p->hDC, 12, 16);
+            MoveToEx(p->hDC, 7, 11, NULL); LineTo(p->hDC, 13, 17);
+            MoveToEx(p->hDC, 17, 11, NULL); LineTo(p->hDC, 11, 17);
+            MoveToEx(p->hDC, 6, 19, NULL); LineTo(p->hDC, 19, 19);
+
             SelectObject(p->hDC, hOldPen);
             DeleteObject(hPen);
         }
         else if (p->CtlID == 3) {
-            // Draw Hamburger Menu for Queue Button
-            HBRUSH hIconBrush = CreateSolidBrush(clrText);
-            RECT line1 = { 6, 7, 19, 9 };
-            RECT line2 = { 6, 12, 19, 14 };
-            RECT line3 = { 6, 17, 19, 19 };
-            FillRect(p->hDC, &line1, hIconBrush); FillRect(p->hDC, &line2, hIconBrush); FillRect(p->hDC, &line3, hIconBrush);
-            DeleteObject(hIconBrush);
+            if (appMode == 0) {
+
+                HPEN hPen = CreatePen(PS_SOLID, 2, clrText);
+                HPEN hOldPen = (HPEN)SelectObject(p->hDC, hPen);
+                HBRUSH hOldBrush = (HBRUSH)SelectObject(p->hDC, GetStockObject(NULL_BRUSH));
+
+
+                Ellipse(p->hDC, 4, 4, 21, 21);
+
+
+                SetBkMode(p->hDC, TRANSPARENT);
+                SetTextColor(p->hDC, clrText);
+                DrawTextA(p->hDC, "1", -1, &p->rcItem, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+
+                SelectObject(p->hDC, hOldBrush);
+                SelectObject(p->hDC, hOldPen);
+                DeleteObject(hPen);
+            }
+            else if (appMode == 1) {
+
+                HBRUSH hIconBrush = CreateSolidBrush(clrText);
+                HPEN hNullPen = CreatePen(PS_NULL, 0, 0);
+                HPEN hOldPen = (HPEN)SelectObject(p->hDC, hNullPen);
+                HBRUSH hOldBrush = (HBRUSH)SelectObject(p->hDC, hIconBrush);
+
+                POINT playTri[3] = { { 6, 5 }, { 6, 12 }, { 11, 8 } };
+                Polygon(p->hDC, playTri, 3);
+
+                RECT l1 = { 13, 8, 20, 10 };
+                RECT l2 = { 6, 13, 20, 15 };
+                RECT l3 = { 6, 18, 20, 20 };
+                FillRect(p->hDC, &l1, hIconBrush);
+                FillRect(p->hDC, &l2, hIconBrush);
+                FillRect(p->hDC, &l3, hIconBrush);
+
+                SelectObject(p->hDC, hOldBrush);
+                SelectObject(p->hDC, hOldPen);
+                DeleteObject(hNullPen);
+                DeleteObject(hIconBrush);
+            }
+            else if (appMode == 2) {
+
+                HPEN hPen = CreatePen(PS_SOLID, 2, clrText);
+                HPEN hOldPen = (HPEN)SelectObject(p->hDC, hPen);
+                HBRUSH hOldBrush = (HBRUSH)SelectObject(p->hDC, GetStockObject(NULL_BRUSH));
+
+
+                Rectangle(p->hDC, 6, 6, 16, 16);
+
+
+                SelectObject(p->hDC, hBtnBrush);
+                Rectangle(p->hDC, 10, 10, 20, 20);
+
+                SelectObject(p->hDC, hOldBrush);
+                SelectObject(p->hDC, hOldPen);
+                DeleteObject(hPen);
+            }
         }
         else if (p->CtlID == 8) {
-            // Draw sleek Magnifying Glass for Search Button
+
             HPEN hPen = CreatePen(PS_SOLID, 2, clrText);
             HPEN hOldPen = SelectObject(p->hDC, hPen);
-            HBRUSH hOldBrush = SelectObject(p->hDC, GetStockObject(NULL_BRUSH)); // Hollow brush for the glass
+            HBRUSH hOldBrush = SelectObject(p->hDC, GetStockObject(NULL_BRUSH));
 
-            Ellipse(p->hDC, 5, 5, 17, 17); // The Glass Circle
-            MoveToEx(p->hDC, 15, 15, NULL); LineTo(p->hDC, 19, 19); // The Handle
+            Ellipse(p->hDC, 5, 5, 17, 17);
+            MoveToEx(p->hDC, 15, 15, NULL); LineTo(p->hDC, 19, 19);
 
             SelectObject(p->hDC, hOldBrush);
             SelectObject(p->hDC, hOldPen);
             DeleteObject(hPen);
         }
+        else if (p->CtlID == 10) {
+            SetBkMode(p->hDC, TRANSPARENT);
+            SetTextColor(p->hDC, RGB(232, 38, 47));
+            char btnText[32]; GetWindowTextA(p->hwndItem, btnText, 32);
+            DrawTextA(p->hDC, btnText, -1, &p->rcItem, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+        }
         else {
-            // Draw Standard Text for all other buttons
-            SetBkMode(p->hDC, TRANSPARENT); 
+
+            SetBkMode(p->hDC, TRANSPARENT);
             SetTextColor(p->hDC, clrText);
             char btnText[32]; GetWindowTextA(p->hwndItem, btnText, 32);
             DrawTextA(p->hDC, btnText, -1, &p->rcItem, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
         }
         return TRUE;
     }
+    case WM_ACTIVATE:
+
+        if (LOWORD(wParam) == WA_INACTIVE) {
+            SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
+        }
+        break;
+    case WM_CLOSE:
+        if (isSimulManager) {
+            KillTimer(hwnd, 2);
+
+
+            for (int i = 0; i < queueCount; i++) {
+                if (simulGames[i].active && simulGames[i].hProcess) {
+                    TerminateProcess(simulGames[i].hProcess, 0);
+                    CloseHandle(simulGames[i].hProcess);
+                    simulGames[i].active = FALSE;
+                }
+            }
+
+
+            char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
+            char cleanCmd[MAX_PATH * 3];
+            sprintf(cleanCmd, "/c ping 127.0.0.1 -n 2 > nul & for /d %%x in (\"%sDGE_*\") do rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\"", tempDir, tempDir);
+            ShellExecuteA(NULL, "open", "cmd.exe", cleanCmd, NULL, SW_HIDE);
+        }
+        DestroyWindow(hwnd);
+        break;
+
     case WM_DESTROY: PostQuitMessage(0); break;
     default: return DefWindowProc(hwnd, msg, wParam, lParam);
     }
@@ -875,11 +1144,19 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
 
     if (argc >= 3) {
         char arg1[32]; WideCharToMultiByte(CP_UTF8, 0, argv[1], -1, arg1, 32, NULL, NULL);
-        if (strcmp(arg1, "-queue") == 0) {
+
+        if (strcmp(arg1, "-silent") == 0) {
+            isDummy = TRUE;
+            isSilent = TRUE;
+            totalTime = _wtoi(argv[2]);
+            timeLeft = totalTime;
+            WideCharToMultiByte(CP_UTF8, 0, argv[3], -1, dgeFolderPath, MAX_PATH, NULL, NULL);
+        }
+        else if (strcmp(arg1, "-queue") == 0) {
             isDummy = TRUE;
             WideCharToMultiByte(CP_UTF8, 0, argv[2], -1, queueFilePath, MAX_PATH, NULL, NULL);
-            
-            // Read Dummy Data from Queue File
+
+
             FILE* f = fopen(queueFilePath, "r");
             if (f) {
                 char fileData[8192] = { 0 }; fread(fileData, 1, 8192, f); fclose(f);
@@ -891,7 +1168,7 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
                 if (line) {
                     char tIdx[16], dName[256], fName[256], ePath[256], tSec[32];
                     sscanf(line + 1, "%[^|]|%[^|]|%[^|]|%[^|]|%s", tIdx, dName, fName, ePath, tSec);
-                    
+
                     if (strcmp(dName, "CustomGame") == 0) {
                         char *r = ePath, *w = currentGameName;
                         while (*r) {
@@ -900,13 +1177,13 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
                         }
                         *w = '\0';
                     } else {
-                        strcpy(currentGameName, dName); // Pass the beautiful original name to the UI
+                        strcpy(currentGameName, dName);
                     }
 
                     totalTime = atoi(tSec); timeLeft = totalTime;
-                    
+
                     char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
-                    sprintf(dgeFolderPath, "%sDGE_%s", tempDir, fName); // Use the stripped name for the folder
+                    sprintf(dgeFolderPath, "%sDGE_%s", tempDir, fName);
                 }
             }
         }
@@ -915,13 +1192,13 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
 
     if (!isDummy) {
         hEditBrush = CreateSolidBrush(clrEditBg);
-        // --- UNIVERSAL STARTUP CLEANUP ---
+
         char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
         char cleanCmd[MAX_PATH * 3];
         sprintf(cleanCmd, "/c for /d %%x in (\"%sDGE_*\") do rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\"", tempDir, tempDir);
         ShellExecuteA(NULL, "open", "cmd.exe", cleanCmd, NULL, SW_HIDE);
 
-        // --- NEW: START BACKGROUND DOWNLOAD ---
+
         CreateThread(NULL, 0, BackgroundDownloadThread, NULL, 0, NULL);
     }
 
@@ -933,31 +1210,42 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
     wc.lpszClassName = isDummy ? "DgeDummyClass" : "DgeMainClass";
     RegisterClassA(&wc);
 
-    HWND hwnd = CreateWindowA(wc.lpszClassName, isDummy ? "Game Session" : "Discord Game Emulator",
+
+    DWORD exStyle = isSilent ? WS_EX_TOOLWINDOW : 0;
+    int xPos = isSilent ? -10000 : CW_USEDEFAULT;
+    int yPos = isSilent ? -10000 : CW_USEDEFAULT;
+
+    HWND hwnd = CreateWindowExA(exStyle, wc.lpszClassName, isDummy ? "Game Session" : "Discord Game Emulator",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 300, isDummy ? 200 : 280, NULL, NULL, hInst, NULL);
+        xPos, yPos, 300, isDummy ? 200 : 280, NULL, NULL, hInst, NULL);
 
     int useImmersiveDarkMode = 1;
     DwmSetWindowAttribute(hwnd, 20, &useImmersiveDarkMode, sizeof(useImmersiveDarkMode));
 
-    ShowWindow(hwnd, showCmd); UpdateWindow(hwnd);
+    ShowWindow(hwnd, isSilent ? SW_SHOWNA : showCmd);
+    UpdateWindow(hwnd);
 
-    MSG msg; 
-    while (GetMessage(&msg, NULL, 0, 0)) { 
-        // Intercept 'Enter' key safely and figure out which window we are in!
+
+    if (!isDummy) {
+        SetFocus(hGameName);
+    }
+
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0)) {
+
         if (!isDummy && msg.message == WM_KEYDOWN && msg.wParam == VK_RETURN) {
             HWND activeRoot = GetAncestor(msg.hwnd, GA_ROOT);
-            
+
             if (activeRoot == hwnd) {
-                // If in Main Window -> Launch or Add to Queue
-                SendMessageA(hwnd, WM_COMMAND, isQueueMode ? 4 : 2, 0);
+
+                SendMessageA(hwnd, WM_COMMAND, (appMode == 0) ? 2 : 4, 0);
                 continue;
-            } 
+            }
             else if (hSearchWnd && activeRoot == hSearchWnd) {
-                // If in Search Window -> Auto-fill the top search result!
+
                 int sel = SendMessageA(hSearchList, LB_GETCURSEL, 0, 0);
-                if (sel == LB_ERR) sel = 0; // Default to the top result if none is clicked
-                
+                if (sel == LB_ERR) sel = 0;
+
                 if (SendMessageA(hSearchList, LB_GETCOUNT, 0, 0) > 0) {
                     SendMessageA(hSearchList, LB_SETCURSEL, sel, 0);
                     SendMessageA(hSearchWnd, WM_COMMAND, MAKEWPARAM(102, LBN_DBLCLK), 0);
@@ -965,10 +1253,11 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
                 continue;
             }
         }
-        TranslateMessage(&msg); 
-        DispatchMessage(&msg); 
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
     }
 
     DeleteObject(hBgBrush); DeleteObject(hBtnBrush); if (!isDummy) DeleteObject(hEditBrush); DeleteObject(hFont);
+    if (globalJsonData) free(globalJsonData);
     return 0;
 }
