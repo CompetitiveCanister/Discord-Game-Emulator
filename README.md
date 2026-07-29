@@ -15,7 +15,7 @@ Download the latest version of `Discord_Game_Emulator.exe` under [releases](http
 This project supports Windows only. Support for other operating systems is not planned.
 
 ## Building
-* Clone this repo or download it as zip.
+Clone this repo or download it as zip.
 
 ### Using GCC / MinGW
 ```bash
