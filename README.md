@@ -5,7 +5,7 @@ A lightweight, standalone Win32 application designed to create background dummy 
 ## Features
 
 * **Standalone Executable:** Written entirely in plain C using the Win32 API with zero external dependencies.
-* **Multiple Emulation Modes:** Supports Single Launch, Sequential Queue, and Simultaneous emulation.
+* **Multiple Emulation Modes:** Supports Single, Queued, and Simultaneous emulation.
 * **Game Database Search:** Built-in search window to find supported games.
 * **Minimal Resource Footprint:** Dummy processes idle at under 1MB of RAM usage.
 * **Automatic Cleanup:** Processes safely wipe their temporary generated folders upon completion or premature termination.
