@@ -12,7 +12,7 @@
     "exe": "Gearup_ball.exe"
   },
   {
-    "names": ["Honkai Star Rail", "Star Rail"],
+    "names": ["Honkai: Star Rail", "Star Rail"],
     "exe": "games\\starrail.exe"
   },
   {
@@ -28,7 +28,7 @@
     "exe": "where winds meet.exe"
   },
   {
-    "names": ["Arknights Endfield", "Endfield"],
+    "names": ["Arknights: Endfield", "Endfield"],
     "exe": "endfield.exe"
   },
   {
