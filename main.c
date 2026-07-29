@@ -13,12 +13,10 @@
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "dwmapi.lib")
 
-
 const char* JSON_URL = "https://raw.github.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist.json";
 const float APP_VERSION = 4.1f;
 const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
-
 
 char* globalJsonData = NULL;
 HBRUSH hBgBrush, hBtnBrush, hEditBrush;
@@ -26,7 +24,6 @@ COLORREF clrText = RGB(240, 240, 240);
 COLORREF clrBg = RGB(30, 30, 30);
 COLORREF clrEditBg = RGB(45, 45, 45);
 HFONT hFont;
-
 
 typedef struct {
     char gameName[256];
@@ -37,7 +34,6 @@ typedef struct {
 QueueItem queue[100];
 int queueCount = 0;
 
-
 int appMode = 0;
 HWND hGameName, hCustomExe, hTime;
 HWND hBtnLaunch, hBtnToggleQueue, hBtnUpdate, hBtnSearch;
@@ -45,7 +41,6 @@ HWND hSearchWnd = NULL, hSearchEdit, hSearchList;
 HWND hBtnAddQueue, hBtnStartQueue, hBtnRemoveQueue, hListBox, hQueueLabel;
 HWND hBtnTerminateSimul, hBtnTerminateAllSimul;
 BOOL isSimulManager = FALSE;
-
 
 typedef struct {
     char displayName[256];
@@ -57,7 +52,6 @@ typedef struct {
 } SimulGame;
 SimulGame simulGames[100];
 
-
 int totalTime = 0, timeLeft = 0;
 int qCurrent = 1, qTotal = 1;
 char dgeFolderPath[MAX_PATH] = { 0 };
@@ -66,7 +60,6 @@ char currentGameName[256] = { 0 };
 HWND hTimerLabel, hProgressLabel, hQueueStatusLabel, hGameLabel, hBtnCancel;
 BOOL finishedNaturally = FALSE;
 BOOL isSilent = FALSE;
-
 
 int EvalExpr(const char** p);
 int ParseFactor(const char** p) {
@@ -102,7 +95,6 @@ int EvalExpr(const char** p) {
     return val;
 }
 
-
 BOOL FuzzyCompare(const char* s1, const char* s2) {
     while (*s1 || *s2) {
 
@@ -119,7 +111,6 @@ BOOL FuzzyCompare(const char* s1, const char* s2) {
     return TRUE;
 }
 
-
 void NormalizePath(char* dest, const char* src) {
     char* w = dest;
     while (*src) {
@@ -132,7 +123,6 @@ void NormalizePath(char* dest, const char* src) {
     }
     *w = '\0';
 }
-
 
 char* FetchJSON(const char* url) {
     HINTERNET hInternet = InternetOpenA("DGE_App/1.0", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
@@ -178,7 +168,6 @@ char* FetchJSON(const char* url) {
     InternetCloseHandle(hInternet);
     return buffer;
 }
-
 
 BOOL ParseGame(const char* json, const char* target, char* outPrimary, char* outExe) {
     const char* p = json;
@@ -238,7 +227,6 @@ BOOL ParseGame(const char* json, const char* target, char* outPrimary, char* out
     return FALSE;
 }
 
-
 void ProcessQueueBaton(BOOL abortQueue) {
     char cmd[MAX_PATH * 3];
     char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
@@ -290,7 +278,6 @@ void ProcessQueueBaton(BOOL abortQueue) {
             }
         }
 
-
         sprintf(cmd, "/c ping 127.0.0.1 -n 2 > nul & for /d %%x in (\"%sDGE_*\") do if /i not \"%%~fx\"==\"%s\" rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\"", tempDir, nextBaseDir, tempDir);
         ShellExecuteA(NULL, "open", "cmd.exe", cmd, NULL, SW_HIDE);
     } else {
@@ -300,12 +287,10 @@ void ProcessQueueBaton(BOOL abortQueue) {
     }
 }
 
-
 BOOL CALLBACK SetFontProc(HWND hwndChild, LPARAM lParam) {
     SendMessage(hwndChild, WM_SETFONT, (WPARAM)lParam, TRUE);
     return TRUE;
 }
-
 
 LRESULT CALLBACK DummyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
@@ -378,15 +363,12 @@ LRESULT CALLBACK DummyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
-
 DWORD WINAPI BackgroundDownloadThread(LPVOID lpParam) {
     globalJsonData = FetchJSON(JSON_URL);
     return 0;
 }
 
 void UpdateSimulList(HWND hwnd, HWND hList);
-
-
 void ExecuteQueue(HWND hwnd, int executeMode) {
     char currentExe[MAX_PATH];
     GetModuleFileNameA(NULL, currentExe, MAX_PATH);
@@ -408,21 +390,16 @@ void ExecuteQueue(HWND hwnd, int executeMode) {
     } else {
         if (queueCount == 0) { MessageBoxA(hwnd, "Queue is empty!", "Error", MB_ICONERROR | MB_OK); return; }
     }
-
     char fileBuf[8192] = { 0 };
     sprintf(fileBuf, "TOTAL=%d\nCURRENT=1\n", queueCount);
 
     for (int i = 0; i < queueCount; i++) {
         char primaryName[256] = { 0 }, exePath[256] = { 0 };
-
-
         if (strlen(queue[i].customExe) > 0) {
             strcpy(exePath, queue[i].customExe);
             strcpy(primaryName, strlen(queue[i].gameName) > 0 ? queue[i].gameName : "CustomGame");
         }
-
         else {
-
             int waitLoops = 0;
             while (!globalJsonData && waitLoops < 50) { Sleep(100); waitLoops++; }
 
@@ -438,8 +415,6 @@ void ExecuteQueue(HWND hwnd, int executeMode) {
             if (executeMode == 0) queueCount = 0;
             return;
         }
-
-
         char folderName[256];
         char* r = primaryName; char* w = folderName;
         while (*r) {
@@ -449,8 +424,6 @@ void ExecuteQueue(HWND hwnd, int executeMode) {
             r++;
         }
         *w = '\0';
-
-
         if (executeMode == 2) {
             char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
             sprintf(simulGames[i].folderPath, "%sDGE_%s", tempDir, folderName);
@@ -459,11 +432,8 @@ void ExecuteQueue(HWND hwnd, int executeMode) {
             simulGames[i].timeSec = queue[i].timeSec;
             simulGames[i].active = TRUE;
         }
-
         sprintf(fileBuf + strlen(fileBuf), "%d|%s|%s|%s|%d\n", i + 1, primaryName, folderName, exePath, queue[i].timeSec);
     }
-
-
     if (executeMode == 2) {
         if (globalJsonData) {
             free(globalJsonData);
@@ -475,21 +445,14 @@ void ExecuteQueue(HWND hwnd, int executeMode) {
         }
         isSimulManager = TRUE;
         SetWindowPos(hwnd, NULL, 0, 0, 360, 420, SWP_NOMOVE | SWP_NOZORDER);
-
-
         ShowWindow(hGameName, SW_HIDE); ShowWindow(hCustomExe, SW_HIDE); ShowWindow(hTime, SW_HIDE);
         ShowWindow(hBtnAddQueue, SW_HIDE); ShowWindow(hBtnRemoveQueue, SW_HIDE); ShowWindow(hBtnStartQueue, SW_HIDE);
         ShowWindow(hBtnToggleQueue, SW_HIDE); ShowWindow(hBtnSearch, SW_HIDE); ShowWindow(hQueueLabel, SW_HIDE);
-
-
         SetWindowPos(hListBox, NULL, 27, 20, 300, 300, SWP_NOZORDER);
-
         ShowWindow(hBtnTerminateSimul, SW_SHOW);
         ShowWindow(hBtnTerminateAllSimul, SW_SHOW);
-
         SetWindowPos(hBtnTerminateSimul, NULL, 27, 330, 145, 30, SWP_NOZORDER);
         SetWindowPos(hBtnTerminateAllSimul, NULL, 182, 330, 145, 30, SWP_NOZORDER);
-
 
         for(int i=0; i<queueCount; i++) {
             char dirToCreate[MAX_PATH];
@@ -519,37 +482,29 @@ void ExecuteQueue(HWND hwnd, int executeMode) {
         return;
     }
 
-
     char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
     sprintf(queueFilePath, "%sQueueSession.txt", tempDir);
     FILE* f = fopen(queueFilePath, "w");
     if (f) { fwrite(fileBuf, 1, strlen(fileBuf), f); fclose(f); }
-
     char dName[256], fName[256], ePath[256];
     char searchStr[16]; sprintf(searchStr, "\n1|");
     char* line1 = strstr(fileBuf, searchStr);
     sscanf(line1 + 3, "%[^|]|%[^|]|%[^|]", dName, fName, ePath);
-
     char baseDgeFolder[MAX_PATH]; sprintf(baseDgeFolder, "%sDGE_%s", tempDir, fName);
     char fullExePath[MAX_PATH]; sprintf(fullExePath, "%s\\%s", baseDgeFolder, ePath);
-
     char dirToCreate[MAX_PATH]; strcpy(dirToCreate, fullExePath);
     char* lastSlash = strrchr(dirToCreate, '\\');
     if (lastSlash) *lastSlash = '\0';
     SHCreateDirectoryExA(NULL, dirToCreate, NULL);
-
     CopyFileA(currentExe, fullExePath, FALSE);
-
     char cmdLine[MAX_PATH * 3];
     sprintf(cmdLine, "\"%s\" -queue \"%s\"", fullExePath, queueFilePath);
-
     STARTUPINFOA si = { sizeof(si) }; PROCESS_INFORMATION pi;
     if (CreateProcessA(NULL, cmdLine, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
         CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
         PostQuitMessage(0);
     }
 }
-
 
 typedef struct {
     char name[256];
@@ -563,13 +518,11 @@ int CompareResults(const void* a, const void* b) {
     return lstrcmpiA(r1->name, r2->name);
 }
 
-
 int FuzzyScore(const char* target, const char* query) {
     if (!query || !*query) return 1;
 
     char nT[512] = {0}, nQ[512] = {0};
     int i = 0, j = 0;
-
 
     for (const char* p = target; *p && i < 511; p++) {
         unsigned char c = (unsigned char)*p;
@@ -584,9 +537,7 @@ int FuzzyScore(const char* target, const char* query) {
 
     if (j == 0) return 1;
 
-
     if (strcmp(nT, nQ) == 0) return 4;
-
 
     BOOL isPrefix = TRUE;
     for (int k = 0; k < j; k++) {
@@ -599,7 +550,6 @@ int FuzzyScore(const char* target, const char* query) {
 
     return 0;
 }
-
 
 void PerformSearch(HWND hList, const char* query) {
     SendMessageA(hList, WM_SETREDRAW, FALSE, 0);
@@ -685,7 +635,6 @@ void PerformSearch(HWND hList, const char* query) {
     SendMessageA(hList, WM_SETREDRAW, TRUE, 0);
 }
 
-
 LRESULT CALLBACK SearchWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_CREATE: {
@@ -693,8 +642,6 @@ LRESULT CALLBACK SearchWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
         hSearchEdit = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 12, 30, 270, 22, hwnd, (HMENU)101, NULL, NULL);
         hSearchList = CreateWindowA("LISTBOX", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | LBS_NOTIFY, 12, 60, 270, 280, hwnd, (HMENU)102, NULL, NULL);
         EnumChildWindows(hwnd, SetFontProc, (LPARAM)hFont);
-
-
         if (!globalJsonData) SetTimer(hwnd, 1, 200, NULL);
         PerformSearch(hSearchList, "");
         break;
@@ -725,17 +672,11 @@ LRESULT CALLBACK SearchWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
             if (sel != LB_ERR) {
                 char selectedGame[256] = { 0 };
                 SendMessageA(hSearchList, LB_GETTEXT, sel, (LPARAM)selectedGame);
-
-
                 SetWindowTextA(hGameName, selectedGame);
-
-
                 char dummyName[256] = { 0 }, exePath[256] = { 0 };
                 if (globalJsonData && ParseGame(globalJsonData, selectedGame, dummyName, exePath)) {
                     SetWindowTextA(hCustomExe, exePath);
                 }
-
-
                 DestroyWindow(hwnd);
                 hSearchWnd = NULL;
             }
@@ -756,7 +697,6 @@ LRESULT CALLBACK SearchWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
     return 0;
 }
 
-
 void UpdateSimulList(HWND hwnd, HWND hList) {
     SendMessageA(hList, WM_SETREDRAW, FALSE, 0);
     SendMessageA(hList, LB_RESETCONTENT, 0, 0);
@@ -772,8 +712,6 @@ void UpdateSimulList(HWND hwnd, HWND hList) {
         }
     }
     SendMessageA(hList, WM_SETREDRAW, TRUE, 0);
-
-
     if (activeCount == 0) {
         char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
         char cleanCmd[MAX_PATH * 3];
@@ -783,19 +721,15 @@ void UpdateSimulList(HWND hwnd, HWND hList) {
     }
 }
 
-
 LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_CREATE: {
         CreateWindowA("STATIC", "Game Name (or alias):", WS_CHILD | WS_VISIBLE, 27, 25, 200, 20, hwnd, NULL, NULL, NULL);
         hGameName = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 27, 45, 240, 22, hwnd, NULL, NULL, NULL);
-
         CreateWindowA("STATIC", "Custom EXE Path (Optional):", WS_CHILD | WS_VISIBLE, 27, 75, 200, 20, hwnd, NULL, NULL, NULL);
         hCustomExe = CreateWindowA("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL, 27, 95, 240, 22, hwnd, NULL, NULL, NULL);
-
         CreateWindowA("STATIC", "Time (Seconds or Math):", WS_CHILD | WS_VISIBLE, 27, 125, 200, 20, hwnd, NULL, NULL, NULL);
         hTime = CreateWindowA("EDIT", "910", WS_CHILD | WS_VISIBLE | WS_BORDER, 27, 145, 100, 22, hwnd, NULL, NULL, NULL);
-
         hBtnLaunch = CreateWindowA("BUTTON", "Emulate", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 87, 185, 120, 30, hwnd, (HMENU)2, NULL, NULL);
         hBtnToggleQueue = CreateWindowA("BUTTON", "", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW, 255, 10, 25, 25, hwnd, (HMENU)3, NULL, NULL);
         char* verData = FetchJSON(VERSION_URL);
@@ -826,7 +760,6 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             for (int i = 0; i < queueCount; i++) {
                 if (simulGames[i].active) {
                     simulGames[i].timeSec--;
-
                     if (simulGames[i].timeSec <= 0 || WaitForSingleObject(simulGames[i].hProcess, 0) == WAIT_OBJECT_0) {
                         simulGames[i].active = FALSE;
                         changed = TRUE;
@@ -871,8 +804,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                     SetWindowTextA(hBtnStartQueue, "Start All");
                     SetWindowTextA(hQueueLabel, "Simultaneous Emulation List:");
                 }
-
-
+                
                 InvalidateRect(hBtnAddQueue, NULL, TRUE);
                 InvalidateRect(hBtnStartQueue, NULL, TRUE);
                 InvalidateRect(hQueueLabel, NULL, TRUE);
@@ -897,12 +829,10 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             strcpy(queue[queueCount].customExe, cExe);
             queue[queueCount].timeSec = t;
             queueCount++;
-
             char listStr[300];
             char* dispName = strlen(gInput) > 0 ? gInput : cExe;
             sprintf(listStr, "[%dm %02ds] %s", t / 60, t % 60, dispName);
             SendMessageA(hListBox, LB_ADDSTRING, 0, (LPARAM)listStr);
-
             SetWindowTextA(hGameName, ""); SetWindowTextA(hCustomExe, "");
         }
         else if (id == 5) {
@@ -924,7 +854,6 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 char* lastSlash = strrchr(updateExe, '\\');
                 if (lastSlash) strcpy(lastSlash + 1, "DGE_UpdateTemp.exe");
 
-
                 char cmdStr[2048];
                 sprintf(cmdStr, "/c curl -s -L -o \"%s\" \"%s\" & ping 127.0.0.1 -n 2 > nul & move /y \"%s\" \"%s\" & start \"\" \"%s\"",
                     updateExe, updateUrl, updateExe, currentExe, currentExe);
@@ -943,15 +872,11 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 swc.lpszClassName = "DgeSearchClass";
                 swc.hIcon = (HICON)SendMessageA(hwnd, WM_GETICON, ICON_SMALL, 0);
                 RegisterClassA(&swc);
-
-
                 hSearchWnd = CreateWindowA("DgeSearchClass", "Game Library",
                     WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
                     CW_USEDEFAULT, CW_USEDEFAULT, 300, 369, hwnd, NULL, swc.hInstance, NULL);
-
                 int useImmersiveDarkMode = 1;
                 DwmSetWindowAttribute(hSearchWnd, 20, &useImmersiveDarkMode, sizeof(useImmersiveDarkMode));
-
                 ShowWindow(hSearchWnd, SW_SHOW);
                 UpdateWindow(hSearchWnd);
                 SetFocus(hSearchEdit);
@@ -967,12 +892,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 if (simulGames[i].active) {
                     TerminateProcess(simulGames[i].hProcess, 0);
                     simulGames[i].active = FALSE;
-
-
                     char cmd[MAX_PATH * 2];
                     sprintf(cmd, "/c rmdir /s /q \"%s\"", simulGames[i].folderPath);
                     ShellExecuteA(NULL, "open", "cmd.exe", cmd, NULL, SW_HIDE);
-
                     UpdateSimulList(hwnd, hListBox);
                 }
             }
@@ -980,12 +902,10 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         else if (id == 10) {
             for (int i = 0; i < queueCount; i++) {
                 if (simulGames[i].active) {
-
                     TerminateProcess(simulGames[i].hProcess, 0);
                     simulGames[i].active = FALSE;
                 }
             }
-
 
             UpdateSimulList(hwnd, hListBox);
         }
@@ -1004,51 +924,39 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 
             HPEN hPen = CreatePen(PS_SOLID, 2, RGB(50, 220, 50));
             HPEN hOldPen = SelectObject(p->hDC, hPen);
-
             MoveToEx(p->hDC, 12, 6, NULL); LineTo(p->hDC, 12, 16);
             MoveToEx(p->hDC, 7, 11, NULL); LineTo(p->hDC, 13, 17);
             MoveToEx(p->hDC, 17, 11, NULL); LineTo(p->hDC, 11, 17);
             MoveToEx(p->hDC, 6, 19, NULL); LineTo(p->hDC, 19, 19);
-
             SelectObject(p->hDC, hOldPen);
             DeleteObject(hPen);
         }
         else if (p->CtlID == 3) {
             if (appMode == 0) {
-
                 HPEN hPen = CreatePen(PS_SOLID, 2, clrText);
                 HPEN hOldPen = (HPEN)SelectObject(p->hDC, hPen);
                 HBRUSH hOldBrush = (HBRUSH)SelectObject(p->hDC, GetStockObject(NULL_BRUSH));
-
-
                 Ellipse(p->hDC, 4, 4, 21, 21);
-
-
                 SetBkMode(p->hDC, TRANSPARENT);
                 SetTextColor(p->hDC, clrText);
                 DrawTextA(p->hDC, "1", -1, &p->rcItem, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-
                 SelectObject(p->hDC, hOldBrush);
                 SelectObject(p->hDC, hOldPen);
                 DeleteObject(hPen);
             }
             else if (appMode == 1) {
-
                 HBRUSH hIconBrush = CreateSolidBrush(clrText);
                 HPEN hNullPen = CreatePen(PS_NULL, 0, 0);
                 HPEN hOldPen = (HPEN)SelectObject(p->hDC, hNullPen);
                 HBRUSH hOldBrush = (HBRUSH)SelectObject(p->hDC, hIconBrush);
-
                 POINT playTri[3] = { { 6, 5 }, { 6, 12 }, { 11, 8 } };
                 Polygon(p->hDC, playTri, 3);
-
                 RECT l1 = { 13, 8, 20, 10 };
                 RECT l2 = { 6, 13, 20, 15 };
                 RECT l3 = { 6, 18, 20, 20 };
                 FillRect(p->hDC, &l1, hIconBrush);
                 FillRect(p->hDC, &l2, hIconBrush);
                 FillRect(p->hDC, &l3, hIconBrush);
-
                 SelectObject(p->hDC, hOldBrush);
                 SelectObject(p->hDC, hOldPen);
                 DeleteObject(hNullPen);
@@ -1059,28 +967,20 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                 HPEN hPen = CreatePen(PS_SOLID, 2, clrText);
                 HPEN hOldPen = (HPEN)SelectObject(p->hDC, hPen);
                 HBRUSH hOldBrush = (HBRUSH)SelectObject(p->hDC, GetStockObject(NULL_BRUSH));
-
-
                 Rectangle(p->hDC, 6, 6, 16, 16);
-
-
                 SelectObject(p->hDC, hBtnBrush);
                 Rectangle(p->hDC, 10, 10, 20, 20);
-
                 SelectObject(p->hDC, hOldBrush);
                 SelectObject(p->hDC, hOldPen);
                 DeleteObject(hPen);
             }
         }
         else if (p->CtlID == 8) {
-
             HPEN hPen = CreatePen(PS_SOLID, 2, clrText);
             HPEN hOldPen = SelectObject(p->hDC, hPen);
             HBRUSH hOldBrush = SelectObject(p->hDC, GetStockObject(NULL_BRUSH));
-
             Ellipse(p->hDC, 5, 5, 17, 17);
             MoveToEx(p->hDC, 15, 15, NULL); LineTo(p->hDC, 19, 19);
-
             SelectObject(p->hDC, hOldBrush);
             SelectObject(p->hDC, hOldPen);
             DeleteObject(hPen);
@@ -1092,7 +992,6 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
             DrawTextA(p->hDC, btnText, -1, &p->rcItem, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
         }
         else {
-
             SetBkMode(p->hDC, TRANSPARENT);
             SetTextColor(p->hDC, clrText);
             char btnText[32]; GetWindowTextA(p->hwndItem, btnText, 32);
@@ -1101,7 +1000,6 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         return TRUE;
     }
     case WM_ACTIVATE:
-
         if (LOWORD(wParam) == WA_INACTIVE) {
             SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1);
         }
@@ -1109,8 +1007,6 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     case WM_CLOSE:
         if (isSimulManager) {
             KillTimer(hwnd, 2);
-
-
             for (int i = 0; i < queueCount; i++) {
                 if (simulGames[i].active && simulGames[i].hProcess) {
                     TerminateProcess(simulGames[i].hProcess, 0);
@@ -1118,8 +1014,7 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
                     simulGames[i].active = FALSE;
                 }
             }
-
-
+            
             char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
             char cleanCmd[MAX_PATH * 3];
             sprintf(cleanCmd, "/c ping 127.0.0.1 -n 2 > nul & for /d %%x in (\"%sDGE_*\") do rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\"", tempDir, tempDir);
@@ -1144,7 +1039,6 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
 
     if (argc >= 3) {
         char arg1[32]; WideCharToMultiByte(CP_UTF8, 0, argv[1], -1, arg1, 32, NULL, NULL);
-
         if (strcmp(arg1, "-silent") == 0) {
             isDummy = TRUE;
             isSilent = TRUE;
@@ -1155,20 +1049,16 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
         else if (strcmp(arg1, "-queue") == 0) {
             isDummy = TRUE;
             WideCharToMultiByte(CP_UTF8, 0, argv[2], -1, queueFilePath, MAX_PATH, NULL, NULL);
-
-
             FILE* f = fopen(queueFilePath, "r");
             if (f) {
                 char fileData[8192] = { 0 }; fread(fileData, 1, 8192, f); fclose(f);
                 char* pTotal = strstr(fileData, "TOTAL="); if (pTotal) qTotal = atoi(pTotal + 6);
                 char* pCur = strstr(fileData, "CURRENT="); if (pCur) qCurrent = atoi(pCur + 8);
-
                 char targetLine[32]; sprintf(targetLine, "\n%d|", qCurrent);
                 char* line = strstr(fileData, targetLine);
                 if (line) {
                     char tIdx[16], dName[256], fName[256], ePath[256], tSec[32];
                     sscanf(line + 1, "%[^|]|%[^|]|%[^|]|%[^|]|%s", tIdx, dName, fName, ePath, tSec);
-
                     if (strcmp(dName, "CustomGame") == 0) {
                         char *r = ePath, *w = currentGameName;
                         while (*r) {
@@ -1179,9 +1069,7 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
                     } else {
                         strcpy(currentGameName, dName);
                     }
-
                     totalTime = atoi(tSec); timeLeft = totalTime;
-
                     char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
                     sprintf(dgeFolderPath, "%sDGE_%s", tempDir, fName);
                 }
@@ -1189,16 +1077,12 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
         }
     }
     LocalFree(argv);
-
     if (!isDummy) {
         hEditBrush = CreateSolidBrush(clrEditBg);
-
         char tempDir[MAX_PATH]; GetTempPathA(MAX_PATH, tempDir);
         char cleanCmd[MAX_PATH * 3];
         sprintf(cleanCmd, "/c for /d %%x in (\"%sDGE_*\") do rmdir /s /q \"%%x\" & del /q /f \"%sDGE_*\"", tempDir, tempDir);
         ShellExecuteA(NULL, "open", "cmd.exe", cleanCmd, NULL, SW_HIDE);
-
-
         CreateThread(NULL, 0, BackgroundDownloadThread, NULL, 0, NULL);
     }
 
@@ -1209,7 +1093,6 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
     wc.hbrBackground = hBgBrush;
     wc.lpszClassName = isDummy ? "DgeDummyClass" : "DgeMainClass";
     RegisterClassA(&wc);
-
 
     DWORD exStyle = isSilent ? WS_EX_TOOLWINDOW : 0;
     int xPos = isSilent ? -10000 : CW_USEDEFAULT;
@@ -1225,19 +1108,15 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
     ShowWindow(hwnd, isSilent ? SW_SHOWNA : showCmd);
     UpdateWindow(hwnd);
 
-
     if (!isDummy) {
         SetFocus(hGameName);
     }
 
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
-
         if (!isDummy && msg.message == WM_KEYDOWN && msg.wParam == VK_RETURN) {
             HWND activeRoot = GetAncestor(msg.hwnd, GA_ROOT);
-
             if (activeRoot == hwnd) {
-
                 SendMessageA(hwnd, WM_COMMAND, (appMode == 0) ? 2 : 4, 0);
                 continue;
             }
@@ -1245,7 +1124,6 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
 
                 int sel = SendMessageA(hSearchList, LB_GETCURSEL, 0, 0);
                 if (sel == LB_ERR) sel = 0;
-
                 if (SendMessageA(hSearchList, LB_GETCOUNT, 0, 0) > 0) {
                     SendMessageA(hSearchList, LB_SETCURSEL, sel, 0);
                     SendMessageA(hSearchWnd, WM_COMMAND, MAKEWPARAM(102, LBN_DBLCLK), 0);
@@ -1256,7 +1134,6 @@ int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdLine, int showCm
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
-
     DeleteObject(hBgBrush); DeleteObject(hBtnBrush); if (!isDummy) DeleteObject(hEditBrush); DeleteObject(hFont);
     if (globalJsonData) free(globalJsonData);
     return 0;
