@@ -1,6 +1,6 @@
-# Discord Game Emulator Launcher
+# Discord Game Emulator
 
-A lightweight, standalone Win32 application designed to create background dummy processes for Discord Rich Presence. The program dynamically fetches game configurations from an online database, spawns minimal background processes to emulate game activity, and performs automatic cleanup upon completion.
+A lightweight, standalone Win32 application designed to create background dummy processes for Discord Rich Presence. The program dynamically fetches game directories from a maintained JSON within this repo, spawns minimal dummy processes to emulate game activity, and performs automatic cleanup upon completion.
 
 ## Features
 
