@@ -10274,7 +10274,6 @@
   },
   {
     "names": [
-      "Control",
       "CONTROL"
     ],
     "exe": "control\\control_dx11.exe"
@@ -29212,7 +29211,7 @@
   {
     "names": [
       "League of Legends",
-      "League of Legends (TW)"
+      "LoL"
     ],
     "exe": "garenaloltw\\gamedata\\apps\\loltw\\lol.exe"
   },
@@ -29302,8 +29301,8 @@
   },
   {
     "names": [
-      "Legend of Edda",
-      "Legend of Edda: Pegasus"
+      "Legend of Edda: Pegasus",
+      "Legend of Edda"
     ],
     "exe": "legend of edda pegasus\\client.exe"
   },
@@ -29444,8 +29443,7 @@
   },
   {
     "names": [
-      "LEGO Jurassic World",
-      "LEGO? Jurassic World"
+      "LEGO Jurassic World"
     ],
     "exe": "legojurassicworld_dx11.exe"
   },
@@ -29463,8 +29461,7 @@
   },
   {
     "names": [
-      "LEGO Marvel's Avengers",
-      "LEGO? MARVEL's Avengers"
+      "LEGO Marvel's Avengers"
     ],
     "exe": "legomarvelavengers.exe"
   },
@@ -29488,26 +29485,18 @@
   },
   {
     "names": [
-      "LEGO Star Wars: The Force Awakens",
-      "LEGO? STAR WARS?: The Force Awakens",
-      "LEGO STAR WARS: The Force Awakens"
+      "LEGO Star Wars: The Force Awakens"
     ],
     "exe": "legoswtfa_dx11.exe"
   },
   {
     "names": [
-      "LEGO Star Wars: The Skywalker Saga",
-      "LEGO® Star Wars™ : La Saga Skywalker",
-      "LEGO® Star Wars™: Die Skywalker Saga",
-      "LEGO® Star Wars™: La Saga Skywalker",
-      "LEGO ® Gwiezdne Wojny™: Saga Skywalkerów"
+      "LEGO Star Wars: The Skywalker Saga"
     ],
     "exe": "lego star wars - the skywalker saga\\legostarwarsskywalkersaga_dx11.exe"
   },
   {
     "names": [
-      "LEGO The Hobbit",
-      "LEGO? The Hobbit?",
       "LEGO - The Hobbit"
     ],
     "exe": "legohobbit.exe"
@@ -29532,8 +29521,7 @@
   },
   {
     "names": [
-      "LEGO Worlds",
-      "LEGO? Worlds"
+      "LEGO Worlds"
     ],
     "exe": "lego_worlds_dx11.exe"
   },
@@ -29594,8 +29582,7 @@
   },
   {
     "names": [
-      "Let It Die",
-      "LET IT DIE"
+      "Let It Die"
     ],
     "exe": "win64\\brggame-steam.exe"
   },
@@ -29667,8 +29654,7 @@
   },
   {
     "names": [
-      "Level Unknown: Backrooms",
-      "Level Unknown: Backrooms Demo"
+      "Level Unknown: Backrooms"
     ],
     "exe": "win64\\levelunknown-win64-shipping.exe"
   },
@@ -29753,8 +29739,7 @@
   },
   {
     "names": [
-      "Life Is Strange 2",
-      "Life is Strange 2"
+      "Life Is Strange 2"
     ],
     "exe": "win64\\lis2-win64-shipping.exe"
   },
@@ -29778,9 +29763,7 @@
   },
   {
     "names": [
-      "Life is Strange: Episode 1 - Chrysalis",
-      "Life Is Strange",
-      "Life is Strange™"
+      "Life Is Strange"
     ],
     "exe": "lifeisstrange.exe"
   },
@@ -29840,8 +29823,7 @@
   },
   {
     "names": [
-      "LIGHTNING RETURNS: FINAL FANTASY XIII",
-      "Lightning Returns: Final Fantasy XIII"
+      "LIGHTNING RETURNS: FINAL FANTASY XIII"
     ],
     "exe": "lrff13.exe"
   },
@@ -29950,8 +29932,7 @@
   },
   {
     "names": [
-      "Lineage II",
-      "LineageII"
+      "Lineage II"
     ],
     "exe": "lineageii.exe"
   },
