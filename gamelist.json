@@ -19790,10 +19790,9 @@
   },
   {
     "names": [
-      "Fortnite",
-      "Epic Games Launcher"
+      "Fortnite"
     ],
-    "exe": "fortniteclient-win64-shipping_eac_eos.exe"
+    "exe": "fortniteclient-win64-shipping.exe"
   },
   {
     "names": [
