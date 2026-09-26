@@ -6,6 +6,7 @@
 #include <dwmapi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <tlhelp32.h>
 #include <uxtheme.h>
 
 #pragma comment(lib, "wininet.lib")
@@ -16,9 +17,9 @@
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "uxtheme.lib")
 
-const char* JSON_URL = "https://raw.githubusercontent.com/CompetitiveCanister/Discord-Game-Emulator/refs/heads/main/gamelist.json";
+const char* JSON_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist.json";
 const float APP_VERSION = 5.0f;
-const char* VERSION_URL = "https://raw.githubusercontent.com/CompetitiveCanister/Discord-Game-Emulator/refs/heads/main/version.txt";
+const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
 const char* PH_APPID = "AppID (e.g. 4080220)";
 
@@ -141,22 +142,56 @@ BOOL CALLBACK FindDiscordProc(HWND hwnd, LPARAM lParam) {
     }
     return TRUE;
 }
-void RestartDiscordAndWait() {
-    system("taskkill /F /IM Discord.exe >nul 2>&1");
-    Sleep(2000);
-    char localApp[MAX_PATH]; GetEnvironmentVariableA("LOCALAPPDATA", localApp, MAX_PATH);
-    char cmd[MAX_PATH * 2]; sprintf(cmd, "\"%s\\Discord\\Update.exe\" --processStart Discord.exe", localApp);
 
-    STARTUPINFOA si = { sizeof(si) }; PROCESS_INFORMATION pi;
-    if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-        CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+void RestartDiscordAndWait() {
+
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32 pe;
+        pe.dwSize = sizeof(PROCESSENTRY32);
+        if (Process32First(hSnap, &pe)) {
+            do {
+                if (_stricmp(pe.szExeFile, "Discord.exe") == 0) {
+                    HANDLE hProc = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+                    if (hProc) {
+                        TerminateProcess(hProc, 0);
+                        CloseHandle(hProc);
+                    }
+                }
+            } while (Process32Next(hSnap, &pe));
+        }
+        CloseHandle(hSnap);
     }
 
-    for (int i = 0; i < 30; i++) {
+    for (int i = 0; i < 40; i++) {
+        BOOL found = FALSE;
+        EnumWindows(FindDiscordProc, (LPARAM)&found);
+        if (!found) break;
+        Sleep(100);
+    }
+
+    Sleep(500);
+
+    char localApp[MAX_PATH];
+    GetEnvironmentVariableA("LOCALAPPDATA", localApp, MAX_PATH);
+    char cmd[MAX_PATH * 2];
+    sprintf(cmd, "\"%s\\Discord\\Update.exe\" --processStart Discord.exe", localApp);
+
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi;
+    if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    }
+
+    for (int i = 0; i < 40; i++) {
         Sleep(500);
         BOOL found = FALSE;
         EnumWindows(FindDiscordProc, (LPARAM)&found);
-        if (found) { Sleep(1000); break; }
+        if (found) {
+            Sleep(1500);
+            break;
+        }
     }
 }
 
