@@ -40,6 +40,16 @@
     "exe": "genshinimpact.exe"
   },
   {
+    "names": ["EA SPORTS FC™ 27"],
+    "exe": "EA SPORTS FC 27\\fc27.exe",
+    "appid": "4080220"
+  }
+  {
+    "names": ["Marathon"],
+    "exe": "Marathon Server Slam\\Marathon.exe",
+    "appid": "3065800"
+  }
+  {
     "names": [
       "1/8192"
     ],
