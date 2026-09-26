@@ -4,7 +4,7 @@ A lightweight, standalone Win32 application designed to create background dummy 
 
 ## Features
 
-* **Steam Mode:** Forge `.acf` files at your Steam directory to successfully emulate games like Marathon or FC26.
+* **Steam Mode:** Forge `.acf` files at your Steam directory to successfully emulate games like Marathon or FC27.
 * **Standalone Executable:** Written entirely in plain C using the Win32 API with zero external dependencies.
 * **Multiple Emulation Modes:** Supports Single and Queued emulation.
 * **Game Database Search:** Built-in search window to find supported games.
@@ -30,13 +30,21 @@ gcc -mwindows -o Discord_Game_Emulator.exe main.c resource.res -lwininet -lshell
 2. **Search:** Click the magnifying glass icon to open the database. Double-click a game to auto-fill its details.
 3. **Configure:** Enter a game name, an optional custom executable path, and a time duration in seconds.
 4. **Select Mode:** Use the toggle button in the top right to switch between Single Launch and Queue Mode.
-5. **Execute:** Click the **Emulate** button at the bottom of the window to begin emulation.
+5. **Toggle Steam Mode:** Check Steam Mode to forge `.acf` files at your Steam directory to emulate games like Marathon or FC27. You will be prompted to restart Discord as it is required for the detection of Steam games. May require you to find the AppID to the Steam game.
+6. **Execute:** Click the **Emulate** button at the bottom of the window to begin emulation.
 > [!CAUTION]
 > It is **not** recommended to run multiple instances of this program at once, as they may interfere with one another. If you wish to emulate multiple games, use Queued Emulation.
+
+> [!TIP]
+> When using **Steam Mode**, the program will not trigger Rich Presence, but the quest will still advance in progression.
+
+>[!TIP]
+>If the program does not find the AppID to your game automatically, you can find it by looking up your game on [SteamDB.info](https://steamdb.info/).
+
 ## Modes
 1. **Single Game Emulation:** Emulate one game only.
 2. **Queued Emulation:** Emulate games in a queue, one game after the other.
-3. **Steam Mode:** Forge `.acf` files at your Steam directory to successfully emulate games like Marathon or FC26. Not mutually exclusive to the previous emulation modes listed.
+3. **Steam Mode:** Forge `.acf` files at your Steam directory to successfully emulate games like Marathon or FC27. Not mutually exclusive to the previous emulation modes listed.
 
 ## AI Declaration
 This project was written with the assistance of AI.
