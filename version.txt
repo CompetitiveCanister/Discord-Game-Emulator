@@ -1,2 +1,2 @@
-4.2
+5.0
 https://github.com/CompetitiveCanister/Discord-Game-Emulator/releases/latest/download/Discord_Game_Emulator.exe
