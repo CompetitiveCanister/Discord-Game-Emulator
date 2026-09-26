@@ -17,9 +17,9 @@
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "uxtheme.lib")
 
-const char* JSON_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/gamelist.json";
+const char* JSON_URL = "https://raw.githubusercontent.com/CompetitiveCanister/Discord-Game-Emulator/refs/heads/main/gamelist.json";
 const float APP_VERSION = 5.0f;
-const char* VERSION_URL = "https://raw.githubusercontent.com/swypieuwuu/Discord-Game-Emulator/refs/heads/main/version.txt";
+const char* VERSION_URL = "https://raw.githubusercontent.com/CompetitiveCanister/Discord-Game-Emulator/refs/heads/main/version.txt";
 char updateUrl[512] = { 0 };
 const char* PH_APPID = "AppID (e.g. 4080220)";
 
