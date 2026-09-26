@@ -4,6 +4,7 @@ A lightweight, standalone Win32 application designed to create background dummy 
 
 ## Features
 
+* **Steam Mode:** Forge `.acf` files at your Steam directory to successfully emulate games like Marathon or FC26.
 * **Standalone Executable:** Written entirely in plain C using the Win32 API with zero external dependencies.
 * **Multiple Emulation Modes:** Supports Single and Queued emulation.
 * **Game Database Search:** Built-in search window to find supported games.
@@ -20,7 +21,7 @@ Clone this repo or download it as zip.
 ### Using GCC / MinGW
 ```bash
 windres resource.rc -O coff -o resource.res
-gcc -mwindows -o Discord_Game_Emulator.exe main.c resource.res -lwininet -lshell32 -luser32 -lgdi32 -ldwmapi
+gcc -mwindows -o Discord_Game_Emulator.exe main.c resource.res -lwininet -lshell32 -luser32 -lgdi32 -ldwmapi --luxtheme
 ```
 
 ## Usage
@@ -33,8 +34,9 @@ gcc -mwindows -o Discord_Game_Emulator.exe main.c resource.res -lwininet -lshell
 > [!CAUTION]
 > It is **not** recommended to run multiple instances of this program at once, as they may interfere with one another. If you wish to emulate multiple games, use Queued Emulation.
 ## Modes
-1. **Single Game Emulation:** Emulate one game only
+1. **Single Game Emulation:** Emulate one game only.
 2. **Queued Emulation:** Emulate games in a queue, one game after the other.
+3. **Steam Mode:** Forge `.acf` files at your Steam directory to successfully emulate games like Marathon or FC26. Not mutually exclusive to the previous emulation modes listed.
 
 ## AI Declaration
 This project was written with the assistance of AI.
